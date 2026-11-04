@@ -7,9 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from io import StringIO
 from pathlib import Path
+import os
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import sync_playwright
@@ -44,6 +46,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
         home = '<section id="home-page">Public sleep diary homepage</section>'
         routes = {
             "/ready": '<div data-testid="stApp"><iframe src="/home"></iframe></div>' + socket_script,
+            "/~/+/": '<div data-testid="stApp"><iframe src="/home"></iframe></div>' + socket_script,
+            "/stalled-wrapper": '<iframe style="display:none" src="/~/+/"></iframe>',
             "/home": home,
             "/sleep": '<button onclick="location.href=\'/ready\'">Yes, get this app back up!</button>',
             "/embedded-sleep": '<iframe src="/sleep"></iframe>',
@@ -99,6 +103,13 @@ class BrowserVisitTests(unittest.TestCase):
         self.assertEqual(result["status"], "passed")
         self.assertTrue(result["woke_app"])
 
+    def test_stalled_hosting_wrapper_opens_its_same_origin_app_frame(self):
+        result = visit_once(self.browser, {"name": "fixture", "url": self.base + "/stalled-wrapper"},
+                            timeout=3, hold=0, frame_fallback_after=0)
+        self.assertEqual(result["status"], "passed")
+        self.assertTrue(result["opened_hosted_app_frame"])
+        self.assertTrue(result["websocket_received"])
+
     def test_http_200_without_app_is_not_success(self):
         self.assertEqual(self.visit("/not-ready", timeout=1)["status"], "failed")
 
@@ -115,12 +126,13 @@ class BrowserVisitTests(unittest.TestCase):
 
     def test_failed_visits_retry_and_report_failure(self):
         target = {"name": "fixture", "url": self.base + "/not-ready"}
-        result = visit_target(self.browser, target, timeout=1, hold=0, attempts=2)
+        with redirect_stdout(StringIO()):
+            result = visit_target(self.browser, target, timeout=1, hold=0, attempts=2)
         self.assertEqual(len(result["attempts"]), 2)
         self.assertEqual(result["status"], "failed")
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "report.json"
-            with redirect_stdout(StringIO()):
+            with redirect_stdout(StringIO()), patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
                 self.assertFalse(write_report([result], output))
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertFalse(report["authenticated"])

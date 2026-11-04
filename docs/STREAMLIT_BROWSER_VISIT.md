@@ -21,7 +21,7 @@ Apple 版已改名，因此不使用舊的 `nsysu-apple-design.streamlit.app` �
 2. 用本機合成頁面驗證喚醒、iframe、WebSocket 與失敗判定。
 3. 以全新、未登入的瀏覽器工作階段開啟每個公開首頁。
 4. 若看到 Streamlit 的「Yes, get this app back up!」，按下喚醒。
-5. 等待日誌首頁 `#home-page` 可見，同時確認同一主機的 Streamlit WebSocket 已收到資料。
+5. 等待日誌首頁 `#home-page` 可見，同時確認同一主機的 Streamlit WebSocket 已收到資料。若託管平台外框停在載入畫面 30 秒，會嘗試直接開啟頁面內實際存在、同主機的公開應用 iframe，再確認首頁與連線。
 6. 保持連線 15 秒，確認仍可使用後結束。每個網站最多嘗試 2 次，每次等待上限 150 秒。
 7. 任一網站失敗，整個工作流程會標示失敗。Actions 摘要與 JSON 報告列出各站結果，報告保留 7 天。
 

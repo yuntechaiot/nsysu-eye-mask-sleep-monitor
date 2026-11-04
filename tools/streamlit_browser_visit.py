@@ -45,15 +45,17 @@ def load_targets(path: Path) -> list[dict[str, str]]:
     return targets
 
 
-def visit_once(browser, target: dict[str, str], timeout: int, hold: int) -> dict:
+def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_fallback_after: int = 30) -> dict:
     """Require both the public homepage and a live, receiving app WebSocket."""
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     page = context.new_page()
     app_sockets = []
     woke_app = False
+    promoted_app_frame = False
     result = {"woke_app": False, "status": "failed", "reason": "App did not become ready."}
     started = time.monotonic()
-    host = urlsplit(target["url"]).netloc
+    target_url = urlsplit(target["url"])
+    host = target_url.netloc
 
     def on_socket(socket):
         parsed = urlsplit(socket.url)
@@ -71,6 +73,23 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int) -> dict
         # Do not use networkidle: Streamlit keeps an active WebSocket session.
         page.goto(target["url"], wait_until="domcontentloaded", timeout=min(timeout, 60) * 1000)
         while time.monotonic() - started < timeout:
+            if not promoted_app_frame and time.monotonic() - started >= frame_fallback_after:
+                # If the hosting wrapper stalls, open its observed app iframe.
+                # Never follow arbitrary frames, auth redirects or query URLs.
+                for frame in list(page.frames):
+                    candidate = urlsplit(frame.url)
+                    if (
+                        frame != page.main_frame
+                        and candidate.scheme == target_url.scheme
+                        and candidate.netloc == host
+                        and candidate.path == "/~/+/"
+                        and not candidate.query
+                        and not candidate.fragment
+                    ):
+                        promoted_app_frame = True
+                        remaining = max(1, timeout - (time.monotonic() - started))
+                        page.goto(frame.url, wait_until="domcontentloaded", timeout=min(30, remaining) * 1000)
+                        break
             for frame in list(page.frames):
                 if frame.is_detached():
                     continue
@@ -100,6 +119,8 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int) -> dict
         result["reason"] = "Browser navigation or session failed."
     finally:
         result["woke_app"] = woke_app
+        result["opened_hosted_app_frame"] = promoted_app_frame
+        result["websocket_received"] = any(state["received"] for state in app_sockets)
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
         context.close()
     return result
