@@ -49,6 +49,7 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_f
     """Require both the public homepage and a live, receiving app WebSocket."""
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     page = context.new_page()
+    page.bring_to_front()
     app_sockets = []
     woke_app = False
     promoted_app_frame = False
@@ -70,8 +71,9 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_f
     page.on("websocket", on_socket)
     page.set_default_timeout(3000)
     try:
-        # Do not use networkidle: Streamlit keeps an active WebSocket session.
-        page.goto(target["url"], wait_until="domcontentloaded", timeout=min(timeout, 60) * 1000)
+        # Own the readiness deadline: module downloads can delay DOMContentLoaded,
+        # and networkidle is inappropriate for Streamlit's persistent WebSocket.
+        page.goto(target["url"], wait_until="commit", timeout=min(timeout, 60) * 1000)
         while time.monotonic() - started < timeout:
             if not promoted_app_frame and time.monotonic() - started >= frame_fallback_after:
                 # If the hosting wrapper stalls, open its observed app iframe.
@@ -88,7 +90,7 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_f
                     ):
                         promoted_app_frame = True
                         remaining = max(1, timeout - (time.monotonic() - started))
-                        page.goto(frame.url, wait_until="domcontentloaded", timeout=min(30, remaining) * 1000)
+                        page.goto(frame.url, wait_until="commit", timeout=min(30, remaining) * 1000)
                         break
             for frame in list(page.frames):
                 if frame.is_detached():
@@ -171,10 +173,11 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=150, choices=range(1, 301), metavar="1..300")
     parser.add_argument("--hold-seconds", type=int, default=15, choices=range(0, 61), metavar="0..60")
     parser.add_argument("--attempts", type=int, default=2, choices=range(1, 4))
+    parser.add_argument("--headed", action="store_true", help="Run a full Chromium window (CI uses Xvfb).")
     args = parser.parse_args()
     targets = load_targets(args.config)
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(headless=not args.headed)
         try:
             results = [visit_target(browser, target, args.timeout_seconds, args.hold_seconds, args.attempts)
                        for target in targets]

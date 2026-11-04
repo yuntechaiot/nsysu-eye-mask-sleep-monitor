@@ -5,6 +5,12 @@ on:
     # Every 4 hours, away from the busy start of the hour. Times are UTC.
     - cron: '17 */4 * * *'
   workflow_dispatch:
+    inputs:
+      attempts:
+        description: Maximum attempts per app
+        type: choice
+        default: '2'
+        options: ['2', '1']
 
 permissions:
   contents: read
@@ -39,7 +45,9 @@ jobs:
         run: python tools/test_streamlit_browser_visit.py
 
       - name: Open public homepages and verify Streamlit sessions
-        run: python tools/streamlit_browser_visit.py
+        env:
+          VISIT_ATTEMPTS: ${{ inputs.attempts || '2' }}
+        run: xvfb-run -a python tools/streamlit_browser_visit.py --headed --attempts "$VISIT_ATTEMPTS"
 
       - name: Save visit report
         if: ${{ !cancelled() }}
