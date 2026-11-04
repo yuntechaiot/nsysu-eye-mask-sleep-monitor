@@ -44,10 +44,14 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
         socket_script = "<script>window.ws = new WebSocket('ws://' + location.host + '/_stcore/stream');</script>"
         home = '<section id="home-page">Public sleep diary homepage</section>'
+        app = '<div data-testid="stApp" data-test-script-state="notRunning">'
         routes = {
-            "/ready": '<div data-testid="stApp"><iframe src="/home"></iframe></div>' + socket_script,
-            "/~/+/": '<div data-testid="stApp"><iframe src="/home"></iframe></div>' + socket_script,
+            "/ready": app + '<iframe src="/home"></iframe></div>' + socket_script,
+            "/~/+/": app + '<iframe src="/home"></iframe></div>' + socket_script,
+            "/native-app": app + "Public app ready</div>" + socket_script,
+            "/still-running": app.replace("notRunning", "running") + home + "</div>" + socket_script,
             "/stalled-wrapper": '<iframe style="display:none" src="/~/+/"></iframe>',
+            "/hidden-app": '<iframe style="display:none" src="/native-app"></iframe>',
             "/home": home,
             "/sleep": '<button onclick="location.href=\'/ready\'">Yes, get this app back up!</button>',
             "/embedded-sleep": '<iframe src="/sleep"></iframe>',
@@ -92,6 +96,20 @@ class BrowserVisitTests(unittest.TestCase):
         result = self.visit("/ready")
         self.assertEqual(result["status"], "passed")
         self.assertFalse(result["woke_app"])
+
+    def test_native_app_does_not_depend_on_custom_homepage_layout(self):
+        result = self.visit("/native-app")
+        self.assertEqual(result["status"], "passed")
+        self.assertFalse(result["homepage_visible"])
+        self.assertTrue(result["websocket_open_at_finish"])
+
+    def test_hidden_wrapper_does_not_hide_a_completed_live_session(self):
+        result = self.visit("/hidden-app")
+        self.assertEqual(result["status"], "passed")
+        self.assertFalse(result["homepage_visible"])
+
+    def test_running_script_is_not_treated_as_completed(self):
+        self.assertEqual(self.visit("/still-running", timeout=1)["status"], "failed")
 
     def test_sleep_page_is_woken_and_verified(self):
         result = self.visit("/sleep")

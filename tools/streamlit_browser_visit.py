@@ -46,14 +46,15 @@ def load_targets(path: Path) -> list[dict[str, str]]:
 
 
 def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_fallback_after: int = 30) -> dict:
-    """Require both the public homepage and a live, receiving app WebSocket."""
+    """Require a completed native app execution and a live, receiving WebSocket."""
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     page = context.new_page()
     page.bring_to_front()
     app_sockets = []
     woke_app = False
     promoted_app_frame = False
-    result = {"woke_app": False, "status": "failed", "reason": "App did not become ready."}
+    result = {"woke_app": False, "homepage_visible": False,
+              "status": "failed", "reason": "App did not become ready."}
     started = time.monotonic()
     target_url = urlsplit(target["url"])
     host = target_url.netloc
@@ -101,15 +102,21 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_f
                     if not woke_app and wake.count() and wake.first.is_visible():
                         wake.first.click()
                         woke_app = True
-                    if frame.locator('[data-testid="stException"]').first.is_visible():
+                    if frame.locator('[data-testid="stException"]').count():
                         result["reason"] = "Streamlit rendered an application exception."
                         return result
-                    if frame.locator("#home-page").first.is_visible() and connected():
+                    app = frame.locator('[data-testid="stApp"][data-test-script-state="notRunning"]')
+                    if app.count() and connected():
                         # Keep the real browser session open briefly after rendering.
                         page.wait_for_timeout(hold * 1000)
-                        if not frame.locator("#home-page").first.is_visible() or not connected():
+                        if not app.count() or not connected():
                             continue
-                        result.update(status="passed", reason="Homepage rendered and app WebSocket received data.")
+                        # Homepage layout is informative, not the keep-awake signal.
+                        result["homepage_visible"] = any(
+                            child.locator("#home-page").first.is_visible()
+                            for child in list(page.frames) if not child.is_detached()
+                        )
+                        result.update(status="passed", reason="App execution completed and Streamlit session stayed connected.")
                         return result
                 except PlaywrightError:
                     # Cloud can replace its startup iframe while the app wakes.
@@ -123,6 +130,7 @@ def visit_once(browser, target: dict[str, str], timeout: int, hold: int, frame_f
         result["woke_app"] = woke_app
         result["opened_hosted_app_frame"] = promoted_app_frame
         result["websocket_received"] = any(state["received"] for state in app_sockets)
+        result["websocket_open_at_finish"] = connected()
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
         context.close()
     return result
@@ -155,10 +163,12 @@ def write_report(results: list[dict], output: Path) -> bool:
     print(json.dumps(report, ensure_ascii=False, indent=2))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
-        rows = ["## Streamlit browser visit", "", "| App | Result | Wake button clicked | Attempts |", "| --- | --- | --- | --- |"]
+        rows = ["## Streamlit browser visit", "", "| App | Session | Homepage visible | Wake button clicked | Attempts |",
+                "| --- | --- | --- | --- | --- |"]
         for result in results:
             woke = any(attempt["woke_app"] for attempt in result["attempts"])
-            rows.append(f"| [{result['name']}]({result['url']}) | {result['status']} | {woke} | {len(result['attempts'])} |")
+            homepage = any(attempt["homepage_visible"] for attempt in result["attempts"])
+            rows.append(f"| [{result['name']}]({result['url']}) | {result['status']} | {homepage} | {woke} | {len(result['attempts'])} |")
         rows.extend(["", "Only public homepages were visited. No app login or form submission.",
                      "Best-effort visits reduce idle time; they do not guarantee uninterrupted hosting.", ""])
         with Path(summary).open("a", encoding="utf-8") as handle:
