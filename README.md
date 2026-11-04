@@ -43,3 +43,7 @@ python tools/verify_apple_ui.py
 測試設定使用 CI workflow 中的合成公開金鑰。瀏覽器回歸攔截資料庫請求，所有測試寫入只存在記憶體，不使用真實研究資料。
 
 詳見 [設計分析](docs/APPLE_DESIGN.md) 與 [獨立部署設定](GITHUB_STREAMLIT_SETUP.md)。
+
+## 定時開啟網站
+
+GitHub Actions 每 4 小時用 Playwright 開啟原版與 Apple 版的公開首頁，必要時按下 Streamlit 喚醒按鈕，確認首頁與即時連線正常。排程不登入或提交表單，也不修改原有網頁功能。使用方式、手動執行與限制見 [定時訪問說明](docs/STREAMLIT_BROWSER_VISIT.md)。
