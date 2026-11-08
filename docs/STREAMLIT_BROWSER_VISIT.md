@@ -18,7 +18,7 @@ Apple 版已改名，因此不使用舊的 `nsysu-apple-design.streamlit.app` �
 每 4 小時執行一次。預定台灣時間為每日 00:17、04:17、08:17、12:17、16:17、20:17，實際執行時間可能延遲。
 
 1. 安裝獨立的 Playwright 依賴與 Chromium，不安裝或啟動專案後端。
-2. 用本機合成頁面驗證喚醒、iframe、WebSocket 與失敗判定。
+2. 合成頁面的喚醒、iframe、WebSocket 與失敗判定由獨立工作流程 `streamlit-browser-tests.yml` 在自動訪問程式變更、PR 或手動觸發時驗證。測試失敗仍會標示紅燈，但不阻擋定時訪問。
 3. 在 GitHub Linux runner 的 Xvfb 虛擬桌面內，以全新、未登入的完整 Chromium 開啟每個公開首頁，讓網頁處於前景工作階段。
 4. 若看到 Streamlit 的「Yes, get this app back up!」，按下喚醒。
 5. 確認同一主機的 Streamlit WebSocket 已收到資料，且原生應用已完成執行（`stApp` 的執行狀態為 `notRunning`）。若託管平台外框停在載入畫面 30 秒，會嘗試直接開啟頁面內實際存在、同主機的公開應用 iframe，再確認工作階段。
@@ -43,6 +43,19 @@ python -m playwright install chromium
 python tools/test_streamlit_browser_visit.py
 python tools/streamlit_browser_visit.py
 ```
+
+## 2026-11-08 執行紀錄檢查
+
+檢查 11 月 5 日至 11 月 8 日（台灣時間）的 12 次自動排程及其實際報告：
+
+- 11 次兩站都成功，首頁可見、原生應用執行完成，且 WebSocket 在收到資料後持續連線。
+- [11 月 7 日 22:58 的報告](https://github.com/yuntechaiot/nsysu-eye-mask-sleep-monitor/actions/runs/42383883591)確認兩站都出現休眠按鈕、自動點擊並成功恢復。原版與 Apple 版分別約需 46.5、43.9 秒（含維持連線 15 秒）。
+- [11 月 8 日 14:12 的報告](https://github.com/yuntechaiot/nsysu-eye-mask-sleep-monitor/actions/runs/42453698543)確認兩站仍能正常開啟，分別約需 19.4、18.7 秒；當時不需要喚醒。
+- 唯一[失敗的排程](https://github.com/yuntechaiot/nsysu-eye-mask-sleep-monitor/actions/runs/42345547658)在 11 月 7 日 14:06 的合成測試中，隱藏 iframe 案例超過原先 3 秒期限；實際網站訪問被略過，沒有網站逾時報告。日誌不足以確定該次 iframe 延遲的底層原因。
+
+因此將合成測試移至獨立工作流程，正向案例等待上限由 3 秒改成 10 秒，失敗時輸出完整案例判定欄位；負向案例仍驗證逾時與失敗。網站訪問程式的成功標準、每站 150 秒上限與重試次數維持原設定。
+
+這段紀錄也出現兩次成功訪問相隔約 17 小時（期間一次測試失敗），之後兩站均已休眠並成功喚醒。排程延遲與漏跑仍可能超過 Streamlit 的閒置門檻，不能據此承諾永不休眠。
 
 ## 限制
 

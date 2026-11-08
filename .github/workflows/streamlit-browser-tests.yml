@@ -1,0 +1,46 @@
+name: Streamlit browser automation tests
+
+on:
+  push:
+    paths:
+      - '.github/workflows/streamlit-browser-*.yml'
+      - 'tools/streamlit_browser_visit.py'
+      - 'tools/test_streamlit_browser_visit.py'
+      - 'tools/requirements-keepalive.txt'
+      - 'tools/streamlit_sites.json'
+  pull_request:
+    paths:
+      - '.github/workflows/streamlit-browser-*.yml'
+      - 'tools/streamlit_browser_visit.py'
+      - 'tools/test_streamlit_browser_visit.py'
+      - 'tools/requirements-keepalive.txt'
+      - 'tools/streamlit_sites.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements-keepalive.txt
+
+      - name: Install browser dependencies only
+        run: |
+          python -m pip install -r tools/requirements-keepalive.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Verify wake handling with local fixtures
+        run: python tools/test_streamlit_browser_visit.py

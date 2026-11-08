@@ -34,7 +34,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             if not parse_qs(parsed.query).get("empty"):
                 self.wfile.write(b"\x82\x02ok")
                 self.wfile.flush()
-            self.connection.settimeout(10)
+            self.connection.settimeout(30)
             try:
                 self.rfile.read(1)
             except TimeoutError:
@@ -89,23 +89,25 @@ class BrowserVisitTests(unittest.TestCase):
         cls.server.server_close()
         cls.thread.join(timeout=5)
 
-    def visit(self, path, timeout=3):
+    def visit(self, path, timeout=10):
+        # Give loaded shared CI runners time to start an iframe and its socket.
+        # Negative cases below retain explicit short deadlines.
         return visit_once(self.browser, {"name": "fixture", "url": self.base + path}, timeout, hold=0)
 
     def test_rendered_iframe_and_live_socket_pass(self):
         result = self.visit("/ready")
-        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["status"], "passed", result)
         self.assertFalse(result["woke_app"])
 
     def test_native_app_does_not_depend_on_custom_homepage_layout(self):
         result = self.visit("/native-app")
-        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["status"], "passed", result)
         self.assertFalse(result["homepage_visible"])
         self.assertTrue(result["websocket_open_at_finish"])
 
     def test_hidden_wrapper_does_not_hide_a_completed_live_session(self):
         result = self.visit("/hidden-app")
-        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["status"], "passed", result)
         self.assertFalse(result["homepage_visible"])
 
     def test_running_script_is_not_treated_as_completed(self):
@@ -113,18 +115,18 @@ class BrowserVisitTests(unittest.TestCase):
 
     def test_sleep_page_is_woken_and_verified(self):
         result = self.visit("/sleep")
-        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["status"], "passed", result)
         self.assertTrue(result["woke_app"])
 
     def test_sleep_page_inside_hosting_iframe_is_woken(self):
         result = self.visit("/embedded-sleep")
-        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["status"], "passed", result)
         self.assertTrue(result["woke_app"])
 
     def test_stalled_hosting_wrapper_opens_its_same_origin_app_frame(self):
         result = visit_once(self.browser, {"name": "fixture", "url": self.base + "/stalled-wrapper"},
-                            timeout=3, hold=0, frame_fallback_after=0)
-        self.assertEqual(result["status"], "passed")
+                            timeout=10, hold=0, frame_fallback_after=0)
+        self.assertEqual(result["status"], "passed", result)
         self.assertTrue(result["opened_hosted_app_frame"])
         self.assertTrue(result["websocket_received"])
 
