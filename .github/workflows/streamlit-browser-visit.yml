@@ -2,8 +2,8 @@ name: Streamlit browser visit
 
 on:
   schedule:
-    # Every 4 hours, away from the busy start of the hour. Times are UTC.
-    - cron: '17 */4 * * *'
+    # Every 2 hours, away from the busy start of the hour. Times are UTC.
+    - cron: '17 */2 * * *'
   workflow_dispatch:
     inputs:
       attempts:

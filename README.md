@@ -46,4 +46,4 @@ python tools/verify_apple_ui.py
 
 ## 定時開啟網站
 
-GitHub Actions 每 4 小時用 Playwright 開啟原版與 Apple 版的公開首頁，必要時按下 Streamlit 喚醒按鈕，確認原生應用執行完成並維持有效連線，另記錄首頁是否顯示。排程不登入或提交表單，也不修改原有網頁功能。使用方式、手動執行與限制見 [定時訪問說明](docs/STREAMLIT_BROWSER_VISIT.md)。
+GitHub Actions 每 2 小時用 Playwright 開啟原版與 Apple 版的公開首頁，必要時按下 Streamlit 喚醒按鈕，確認原生應用執行完成並維持有效連線，另記錄首頁是否顯示。排程不登入或提交表單，也不修改原有網頁功能。使用方式、手動執行與限制見 [定時訪問說明](docs/STREAMLIT_BROWSER_VISIT.md)。
