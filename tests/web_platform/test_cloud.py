@@ -65,7 +65,7 @@ def test_cloud_dashboard_retains_latest_two_login_sources(cloud_config):
     app.query_params['view'] = 'dashboard'
     app.run()
     assert not app.exception
-    assert [field.label for field in app.text_input] == ['日誌帳號', '日誌密碼']
+    assert [field.label for field in app.text_input] == ['管理者帳號', '管理者密碼']
     next(r for r in app.radio if r.label == '我要查看').set_value('手錶平台').run()
     assert [field.label for field in app.text_input] == ['平台帳號', '平台密碼']
     assert all('127.0.0.1:8000' not in button.proto.url for button in app.get('link_button'))

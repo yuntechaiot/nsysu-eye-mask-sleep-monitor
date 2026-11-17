@@ -109,9 +109,9 @@ def test_streamlit_empty_dashboard_runs():
     app = AppTest.from_file(DASHBOARD, default_timeout=30).run()
     assert len(app.exception) == 0
     assert len(app.tabs) == 0
-    assert [x.label for x in app.text_input] == ['日誌帳號', '日誌密碼']
+    assert [x.label for x in app.text_input] == ['管理者帳號', '管理者密碼']
     next(x for x in app.radio if x.label == '我要查看').set_value('睡眠日誌與研究資料').run()
-    assert [x.label for x in app.text_input] == ['日誌帳號', '日誌密碼']
+    assert [x.label for x in app.text_input] == ['管理者帳號', '管理者密碼']
     assert not app.exception
 
 

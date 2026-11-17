@@ -1,0 +1,39 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><title>確認管理者登入</title><p role="status">正在確認管理者登入…</p><script>
+'use strict';
+const key='vtca-session';let hydrated=false,initialized=false,peerOrigin=null,nonce=null,lastClear=false;
+const peer=parent.opener;
+function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},location.origin);}
+function result(value){document.querySelector('[role="status"]').textContent='';send('streamlit:setFrameHeight',{height:0});send('streamlit:setComponentValue',{value,dataType:'json'});}
+function askPeer(){if(!peer||!peerOrigin||lastClear)return;nonce=crypto.randomUUID();peer.postMessage({type:'nsysu:session-request',nonce},peerOrigin);}
+function applyPeer(saved){
+ const current=JSON.parse(sessionStorage.getItem(key)||'null');
+ if(!saved){sessionStorage.removeItem(key);if(current||!hydrated)result({ready:true,session:null,...(current?{logged_out:crypto.randomUUID()}:{})});hydrated=true;return;}
+ if(!current||current.access_token!==saved.access_token){sessionStorage.setItem(key,JSON.stringify(saved));result({ready:true,session:saved,session_updated:crypto.randomUUID()});}
+ else if(!hydrated)result({ready:true,session:saved});hydrated=true;
+}
+addEventListener('message',event=>{
+ if(peer&&event.source===peer&&event.origin===peerOrigin){
+  if(event.data?.type==='nsysu:session'&&nonce&&event.data.nonce===nonce){nonce=null;applyPeer(event.data.session);}
+  if(event.data?.type==='nsysu:logout'){sessionStorage.removeItem(key);result({ready:true,session:null,logged_out:crypto.randomUUID()});}
+  if(event.data?.type==='nsysu:session-update'){applyPeer(event.data.session);}
+  return;
+ }
+ if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='streamlit:render')return;
+ try{
+  const args=event.data.args;peerOrigin=new URL(args.diary_url).origin;
+  if(args.operation==='clear'){sessionStorage.removeItem(key);if(peer&&!lastClear)peer.postMessage({type:'nsysu:logout'},peerOrigin);lastClear=true;result({ready:true,session:null,cleared:true});return;}
+  lastClear=false;
+  const current=JSON.parse(sessionStorage.getItem(key)||'null');
+  if(args.session&&args.session.access_token!==current?.access_token){sessionStorage.setItem(key,JSON.stringify(args.session));if(peer)peer.postMessage({type:'nsysu:session-update',session:args.session},peerOrigin);}
+  if(!initialized){initialized=true;
+   const saved=JSON.parse(sessionStorage.getItem(key)||'null');
+   if(!peer){result({ready:true,session:saved});return;}
+   askPeer();
+   const pendingNonce=nonce;
+   setTimeout(()=>{if(nonce!==pendingNonce)return;nonce=null;result({ready:true,session:JSON.parse(sessionStorage.getItem(key)||'null')});},1500);
+  }
+ }catch{result({ready:true,session:null});}
+});
+setInterval(askPeer,2000);
+send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:36});
+</script></html>

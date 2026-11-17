@@ -1,0 +1,9 @@
+[Unit]
+Description=Check NSYSU reminder outbox each minute
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
+Unit=nsysu-reminders.service
+[Install]
+WantedBy=timers.target

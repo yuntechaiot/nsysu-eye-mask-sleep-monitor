@@ -54,6 +54,12 @@ def research_store():
             raise
         st.session_state.supabase_session = saved
     store = Store(saved['access_token'])
+    try:
+        store.user()
+    except StoreError as error:
+        if error.status in (401, 403):
+            deny_research_access()
+        raise
     require_research_access(store)
     return store
 
@@ -71,6 +77,7 @@ def require_research_access(store):
 
 def deny_research_access():
     st.session_state.pop('supabase_session', None)
+    st.session_state['_auth_clear'] = True
     st.session_state.pop('platform_token', None)
     clear_workspace()
     raise PermissionError('管理權限已變更，請重新登入')
@@ -82,12 +89,12 @@ def connected(mode):
 
 def login_panel(mode):
     platform = mode == PLATFORM
-    st.subheader("連接手錶平台" if platform else "登入日誌與研究資料")
-    st.write("使用研究團隊提供的手錶平台帳號，即可查看已授權的睡眠與生理資料。" if platform else "使用現有日誌帳號登入，同時連接 DocterCloud，查看平台全部資料、睡眠日誌與研究資料。")
+    st.subheader("連接 DocterCloud" if platform else "管理者登入")
+    st.write("請輸入已授權的 DocterCloud 帳密，以查看即時平台資料。" if platform else "登入後可使用管理工作區、受試者日誌 QR Code 與已授權研究資料。")
     with st.form("platform_login" if platform else "research_login"):
-        account = st.text_input("平台帳號" if platform else "日誌帳號")
-        password = st.text_input("平台密碼" if platform else "日誌密碼", type="password")
-        submitted = st.form_submit_button("連接手錶平台" if platform else "登入研究資料", type="primary")
+        account = st.text_input("平台帳號" if platform else "管理者帳號")
+        password = st.text_input("平台密碼" if platform else "管理者密碼", type="password")
+        submitted = st.form_submit_button("連接 DocterCloud" if platform else "登入管理工作區", type="primary")
     if submitted:
         if not account.strip() or not password:
             st.error("請填寫帳號與密碼。")
@@ -98,19 +105,14 @@ def login_panel(mode):
                     st.session_state.platform_token = Platform().login(account, password)["access_token"]
                 else:
                     st.session_state.supabase_session = login(account, password)
+                    st.session_state.pop('_auth_clear', None)
+                    research_store()
             clear_workspace()
-            if not platform:
-                st.session_state.pop('platform_token', None)
-                try:
-                    st.session_state.platform_token = Platform().login(account.strip().upper(), password)['access_token']
-                except Exception:
-                    st.session_state.platform_connection_error = '日誌已登入，但 DocterCloud 暫時未連線；可在下方重新連線。'
             st.rerun()
         except Exception:
-            st.error("登入未成功，請確認帳密與連線。日誌帳號與手錶平台帳號可能不同。")
-    with st.expander("該使用哪個帳號？"):
-        st.write("研究團隊現有日誌帳號可同時連接 DocterCloud，不需要另開平台網站。平台密碼只用於本次登入，不會存入原始碼或資料庫。若平台帳密日後不同，可在同一頁重新連接手錶平台。")
-        st.link_button("只想填寫睡眠日誌？直接開始", diary_url())
+            st.error("登入未成功，請確認帳密、管理權限與連線。")
+    if not platform:
+        st.caption("DocterCloud 資料授權另行連接；管理者帳密不會傳送至手錶平台。")
 
 
 def participants_for(mode, store):
@@ -332,6 +334,9 @@ def main(configure_page=True):
     </style>""", unsafe_allow_html=True)
     from .apple_theme import apply as apply_apple_theme
     apply_apple_theme()
+    from .auth_bridge import synchronize
+    if not synchronize(diary_url()):
+        return
     st.title("睡眠與生理研究")
     st.caption("受試者健康總覽 · 生理量測 · 睡眠分析")
     st.sidebar.title("研究工作區")
@@ -342,11 +347,12 @@ def main(configure_page=True):
         st.markdown("### 先連接你要查看的資料")
         login_panel(mode)
         return
-    st.sidebar.success("手錶平台已連接" if mode == PLATFORM else "日誌帳號已登入")
+    st.sidebar.success("手錶平台已連接" if mode == PLATFORM else "管理者已登入")
     if st.sidebar.button("登出目前資料來源"):
         if mode == PLATFORM:
             st.session_state.pop("platform_token", None)
         else:
+            st.session_state["_auth_clear"] = True
             saved = st.session_state.pop("supabase_session")
             st.session_state.pop('platform_token', None)
             try:
@@ -358,6 +364,8 @@ def main(configure_page=True):
     try:
         store = research_store()
         participants = participants_for(mode, store)
+    except PermissionError:
+        st.rerun()
     except Exception:
         st.error("暫時無法讀取受試者清單。請確認連線，必要時登出後重新登入。")
         return
@@ -371,8 +379,16 @@ def main(configure_page=True):
     choices = {member_key(row): row for row in participants}
     st.markdown("##### 選擇受試者與查詢日期")
     cols = st.columns([1.3, 1])
+    selected_key = "subject_" + mode
+    incoming = st.query_params.get('member')
+    if selected_key not in st.session_state and incoming in choices:
+        st.session_state[selected_key] = incoming
     member = cols[0].selectbox("選擇受試者", list(choices), index=0 if len(choices) == 1 else None, format_func=lambda key: member_label(choices[key]), placeholder="輸入或選擇受試者編號", key="subject_" + mode)
-    period = cols[1].radio("日期範圍", ["近 7 天", "近 30 天", "自訂"], horizontal=True)
+    retained = st.session_state.get('_research_context', {})
+    if member:
+        st.query_params['member'] = member
+    periods = ["近 7 天", "近 30 天", "自訂"]
+    period = cols[1].radio("日期範圍", periods, index=periods.index(retained.get('period', '近 7 天')), horizontal=True)
     today = datetime.now(TZ).date()
     if period == "自訂":
         cols = st.columns(2)
@@ -381,6 +397,7 @@ def main(configure_page=True):
     else:
         end, start = today, today - timedelta(days=6 if period == "近 7 天" else 29)
         st.caption(f"{start} 至 {end} · 台灣時間")
+    st.session_state['_research_context'] = {'member': member, 'period': period, 'start': str(start), 'end': str(end)}
     if end < start:
         st.error("結束日期不能早於開始日期。")
         return

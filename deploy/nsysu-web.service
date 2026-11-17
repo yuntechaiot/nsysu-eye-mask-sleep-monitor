@@ -1,0 +1,14 @@
+[Unit]
+Description=NSYSU diary and LINE HTTPS upstream
+After=network-online.target
+[Service]
+User=nsysu
+WorkingDirectory=/opt/nsysu
+EnvironmentFile=/etc/nsysu/reminders.env
+Environment=PYTHONPATH=/opt/nsysu/backend
+ExecStart=/opt/nsysu/.venv/bin/waitress-serve --listen=127.0.0.1:8000 --call nsysu.server:create_app
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target

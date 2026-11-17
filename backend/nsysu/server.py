@@ -6,6 +6,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 from requests import RequestException
+from werkzeug.serving import WSGIRequestHandler
 from .store import Store, settings
 from .parsers import parse_sleep_file, docter_sleep, docter_metrics, canonical_metrics
 from .platform import Platform
@@ -13,8 +14,16 @@ from .platform import Platform
 ROOT = Path(__file__).resolve().parents[2]
 
 
+class RedactedRequestHandler(WSGIRequestHandler):
+    def log_request(self, code='-', size='-'):
+        # Invitations are write capabilities. Never put query strings in logs.
+        self.log('info', '%s %s %s', self.command, urlsplit(self.path).path, code)
+
+
 def create_app():
     app = Flask(__name__)
+    from .reminder_routes import bp, public_line_info
+    app.register_blueprint(bp)
     app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
     @app.get("/")
@@ -33,7 +42,7 @@ def create_app():
         diary_url = os.getenv("VTCA_DIARY_URL", "")
         if diary_url and (urlsplit(diary_url).scheme not in ("http", "https") or not urlsplit(diary_url).netloc):
             diary_url = ""
-        return jsonify(supabase_url=url, publishable_key=key, timezone="Asia/Taipei", diary_url=diary_url, dashboard_url=os.getenv("VTCA_DASHBOARD_URL", "http://127.0.0.1:8501"))
+        return jsonify(line=public_line_info(), supabase_url=url, publishable_key=key, timezone="Asia/Taipei", diary_url=diary_url, dashboard_url=os.getenv("VTCA_DASHBOARD_URL", "http://127.0.0.1:8501"))
 
     @app.get("/api/participants")
     def participants():
@@ -174,4 +183,4 @@ def create_app():
 
 
 if __name__ == "__main__":
-    create_app().run(host=os.getenv("VTCA_HOST", "127.0.0.1"), port=int(os.getenv("VTCA_PORT", "8000")))
+    create_app().run(host=os.getenv("VTCA_HOST", "127.0.0.1"), port=int(os.getenv("VTCA_PORT", "8000")), request_handler=RedactedRequestHandler)

@@ -1,5 +1,18 @@
 # nsysu-eye-mask-sleep-monitor · 深睡體驗營
 
+## LINE 雲端版待發布（2026-11-18）
+
+最新架構使用既有 Supabase 與 Streamlit 雲端：受試者從 LINE 選單綁定、隔日 09:00 開始收到個人日誌連結，未填每兩小時提醒，正式提交後停止當日提醒。本機後端與 Windows Demo 工作已停用，不需要使用者電腦持續開機。
+
+雲端後端、私有資料表與排程已部署但維持停用，僅允許本人測試；網站綁定頁尚未發布，LINE Webhook 尚未切換。223 個 Python 與 45 個 JavaScript／隔離 PostgreSQL 測試通過，手機雲端流程仍待發布後驗收。依使用者原始指示，尚未推送 GitHub；詳細狀態及發布步驟見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md)。
+
+## 先前本機驗收紀錄（目前已停止）
+
+本輪從 GitHub `origin/main` 的 `7e2deb8897a29e3cdd677b19ba41b88dbe704022` 建立獨立 worktree，完整保留原工作目錄。先前隔離本機驗收工具用來查看測試登入資料、模擬 follow、設定台灣時鐘與執行提醒；該工具現已停止，不是雲端版的執行依賴。
+
+管理者登入一次後，工作區提供「產生受試者日誌 QR Code」與「查看研究資料」；即時 DocterCloud 另行授權。一般頁面只保留真實官方 LINE ID 與加入連結。技術設定在 [LINE 設定文件](docs/LINE_SETUP.md)，驗收與限制見 [本輪交付報告](docs/ACCEPTANCE_REPORT.md)，審查與修正見 [EGM 審查報告](docs/goldfish_review_report.md)，進度見 [PROGRESS](docs/PROGRESS.md)。
+
+
 獨立的 Apple 風格、手機優先版本。原始專案 `../NSYSU` 與原網站 https://eye-mask-sleep-monitor.streamlit.app/ 不受此版本部署影響。
 
 - Repository: https://github.com/yuntechaiot/nsysu-eye-mask-sleep-monitor

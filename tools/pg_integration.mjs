@@ -359,5 +359,54 @@ await check('Dashboard verifies current staff state instead of trusting an old J
  assert.equal((await db.query('select public.diary_staff_status() allowed')).rows[0].allowed,false);
  await role('anon');await assert.rejects(db.query('select public.diary_staff_status()'));
 });
+
+await db.exec('reset role');
+await db.exec(`create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id),not_after timestamptz);
+insert into auth.sessions values('10000000-0000-4000-8000-000000000001','${a}',null)`);
+await db.exec(await fs.readFile(new URL('../supabase/migrations/20261117095650_active_staff_session.sql',import.meta.url),'utf8'));
+await check('active staff session continues, revoked session and spoofed metadata fail closed',async()=>{
+ await role('authenticated',a);
+ await db.exec(`select set_config('request.jwt.claims','{"session_id":"10000000-0000-4000-8000-000000000001"}',false)`);
+ assert.equal((await db.query('select public.diary_staff_status() allowed')).rows[0].allowed,true);
+ await db.exec('reset role');
+ await db.exec("delete from auth.sessions");
+ await role('authenticated',a);
+ assert.equal((await db.query('select public.diary_staff_status() allowed')).rows[0].allowed,false);
+ await db.exec(`select set_config('request.jwt.claims','{"app_metadata":{"diary_staff":true},"user_metadata":{"diary_staff":true}}',false)`);
+ assert.equal((await db.query('select public.diary_staff_status() allowed')).rows[0].allowed,false);
+});
+await db.exec('reset role');
+await db.exec(await fs.readFile(new URL('../docs/rollback_active_staff_session.sql',import.meta.url),'utf8'));
+await check('session migration rollback restores baseline role behavior',async()=>{
+ await role('authenticated',a);
+ assert.equal((await db.query('select public.diary_staff_status() allowed')).rows[0].allowed,true);
+});
+
+
+await db.exec('reset role');
+await db.exec(await fs.readFile(new URL('../supabase/migrations/20261117101218_private_line_snapshot.sql',import.meta.url),'utf8'));
+await db.exec("insert into nsysu_private.line_subjects(member_id,study_id,start_date,end_date) values('ycc00000053','SYNTHETIC_STUDY','2026-11-18','2026-11-20')");
+await check('LINE snapshot is private, enrolled, exact-date and read-only',async()=>{
+ await role('anon');await assert.rejects(db.query("select nsysu_private.line_diary_snapshot('ycc00000053','2026-11-18')"));
+ await role('authenticated',a);await assert.rejects(db.query("select nsysu_private.line_diary_snapshot('ycc00000053','2026-11-18')"));
+ await db.exec('reset role;set role nsysu_line_reader');
+ const run=async day=>(await db.query("select nsysu_private.line_diary_snapshot('ycc00000053',$1::date) result",[day])).rows[0].result;
+ assert.equal((await run('2026-11-17')).active,false);
+ const active=await run('2026-11-18');
+ assert.equal(active.active,true);assert.equal(active.study,'SYNTHETIC_STUDY');assert.equal(active.completed,false);
+ assert.match(active.invite,/^[a-f0-9]{64}$/);
+ assert.equal((await run('2026-11-21')).active,false);
+ assert.equal((await db.query("select nsysu_private.line_diary_snapshot('ycc99999999','2026-11-18') result")).rows[0].result,null);
+ await assert.rejects(db.query('select * from vault.decrypted_secrets'));
+ await assert.rejects(db.query('select * from public.sleep_logs'));
+ await assert.rejects(db.query("update nsysu_private.line_subjects set enabled=false"));
+});
+await db.exec('reset role');
+await db.exec(await fs.readFile(new URL('../docs/rollback_private_line_snapshot.sql',import.meta.url),'utf8'));
+await check('private LINE migration rollback preserves diary data',async()=>{
+ assert.equal((await db.query("select to_regclass('nsysu_private.line_subjects') gone")).rows[0].gone,null);
+ assert.ok((await db.query('select count(*)::int n from public.sleep_logs')).rows[0].n>0);
+});
+
 await db.close();
 await fs.mkdir('test-results',{recursive:true});await fs.writeFile('test-results/postgres.json',JSON.stringify(results,null,2));

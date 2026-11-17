@@ -21,3 +21,6 @@ software/
 docs/history/
 .DS_Store
 Thumbs.db
+
+# Local-only screenshots and acceptance traces (synthetic; never credentials)
+artifacts/

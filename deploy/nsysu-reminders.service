@@ -1,0 +1,12 @@
+[Unit]
+Description=NSYSU diary reminders (one bounded run)
+After=network-online.target
+[Service]
+Type=oneshot
+User=nsysu
+WorkingDirectory=/opt/nsysu
+EnvironmentFile=/etc/nsysu/reminders.env
+ExecStart=/opt/nsysu/.venv/bin/python tools/reminder_worker.py --send
+TimeoutStartSec=90
+NoNewPrivileges=true
+PrivateTmp=true

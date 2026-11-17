@@ -158,7 +158,7 @@ def test_saved_and_live_records_match_across_timezones_without_duplicate_charts(
     assert merge_records([saved], [live], metric=True) == [live]
 
 
-def test_diary_login_also_connects_platform_and_loads_all_kinds_only_when_requested(monkeypatch):
+def test_admin_login_does_not_reuse_credentials_and_platform_requires_separate_authorization(monkeypatch):
     from nsysu import dashboard_flow
     calls = []
     monkeypatch.setattr(dashboard_flow, 'login', lambda account, password: {
@@ -171,9 +171,14 @@ def test_diary_login_also_connects_platform_and_loads_all_kinds_only_when_reques
     app = AppTest.from_file(DASHBOARD, default_timeout=30).run()
     app.text_input[0].set_value('RESEARCH_TEST')
     app.text_input[1].set_value('SYNTHETIC')
-    next(b for b in app.button if b.label == '登入研究資料').click().run()
-    assert calls == [('login', 'RESEARCH_TEST')]
-    assert 'platform_token' in app.session_state and not app.exception
+    next(b for b in app.button if b.label == '登入管理工作區').click().run()
+    assert calls == []
+    assert 'platform_token' not in app.session_state and not app.exception
+    app.text_input[0].set_value('PLATFORM_TEST')
+    app.text_input[1].set_value('PLATFORM_PASSWORD')
+    next(b for b in app.button if b.label == '連接 DocterCloud').click().run()
+    assert calls == [('login', 'PLATFORM_TEST')]
+    assert 'platform_token' in app.session_state
     next(b for b in app.button if b.label == '查看資料').click().run()
     assert len(app.tabs) == 8 and not app.exception
     assert {kind for action, kind in calls if action == 'fetch'} == set(KINDS)
@@ -203,7 +208,7 @@ def test_background_read_rechecks_permissions_before_any_platform_request(monkey
     with pytest.raises(PermissionError):
         dashboard_flow.load_records(dashboard_flow.RESEARCH,
             {'member_id': 'ycc00000001', 'platform_profile': {'id': 1}}, date(2026, 10, 20), date(2026, 10, 20), Store('SYNTHETIC'))
-    assert not state
+    assert state == {'_auth_clear': True}
 
 
 def test_platform_connection_failure_preserves_working_diary_login(monkeypatch):
@@ -219,6 +224,6 @@ def test_platform_connection_failure_preserves_working_diary_login(monkeypatch):
     app = AppTest.from_file(DASHBOARD, default_timeout=30).run()
     app.text_input[0].set_value('RESEARCH_TEST')
     app.text_input[1].set_value('SYNTHETIC')
-    next(b for b in app.button if b.label == '登入研究資料').click().run()
+    next(b for b in app.button if b.label == '登入管理工作區').click().run()
     assert 'supabase_session' in app.session_state and 'platform_token' not in app.session_state
-    assert not app.exception and any('暫時未連線' in item.value for item in app.info)
+    assert not app.exception and any('尚未連線' in item.value for item in app.info)

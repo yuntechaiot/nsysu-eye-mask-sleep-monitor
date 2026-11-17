@@ -1,0 +1,6 @@
+project_id = "nsysu-line-cloud"
+
+[functions.nsysu-line]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/nsysu-line/index.ts"

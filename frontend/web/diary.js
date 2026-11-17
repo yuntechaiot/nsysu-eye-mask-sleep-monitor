@@ -39,12 +39,18 @@ async function signIn(event){
     if(action==='participants')await openParticipantDialog();
     if(action==='diary')await openMember(currentMember);
     if(action==='entry')showMemberEntry('diary');
+    if(action==='workspace'||!action)await goWorkspace();
+    if(action==='qr')await goQR();
+    if(action==='research')await openResearch();
+    if(action==='members')await goAdmin();
+    if(action==='history')showHistory();
   }catch(e){el('auth-status').textContent=e.message;}finally{button.disabled=false;}
 }
-async function signOut(){
-  if(session)await fetch(config.supabase_url+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:config.publishable_key,Authorization:'Bearer '+session.access_token}}).catch(()=>{});
+async function signOut(localOnly=false){
+  if(!localOnly)notifyResearchLogout();
+  if(session&&!localOnly)void fetch(config.supabase_url+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:config.publishable_key,Authorization:'Bearer '+session.access_token}}).catch(()=>{});
   session=null;authGeneration++;sessionStorage.removeItem('vtca-session');records=[];exportData=[];allSummary={};editingId=null;
-  postAuthAction=null;invitationCache.clear();clearParticipantNames();updateAccount();el('auth-password').value='';el('submission-receipt').textContent='';
+  postAuthAction=null;invitationCache.clear();fixedInvitationLoads.clear();clearParticipantNames();el('history-area').replaceChildren();el('qr-grid').replaceChildren();el('selected-qr').replaceChildren();el('selected-qr').removeAttribute('title');el('participant-link').value='';el('selected-member-label').textContent='';updateAccount();el('auth-password').value='';el('submission-receipt').textContent='';
   closeManagementDialog();clearHistoryDirectory();
   el('export-table-wrap').textContent='請先登入';closeExport();cancelEdit();
   if(directoryLoaded)await loadParticipants();
@@ -83,7 +89,7 @@ async function refreshSummary(){
 }
 async function openMember(mid){if(!await ensureDiaryAccess(mid))return;const resume=currentMember===mid&&dirty;currentMember=mid;el('member-chip').textContent=mid;showPage('member-page');if(!resume)cancelEdit();setRoute('diary',mid);}
 function cancelEdit(){
- editingId=null;const day=today();
+ editingId=null;const target=new URLSearchParams(window.NSYSU_EMBED?window.NSYSU_EMBED.initial_query:location.search).get('date');const day=target&&/^\d{4}-\d{2}-\d{2}$/.test(target)?target:today();
  ['f-name','f-headphone','f-sleep-onset','f-wakeups','f-lights-out','f-waso','f-wore-watch','f-sleep-medication','f-drank-alcohol'].forEach(id=>el(id).value='');
  el('f-date').value=day;el('f-bed-date').value=previousDay(day);el('f-lights-date').value=previousDay(day);el('f-out-date').value=day;
  el('wake-date-hint').textContent='最後醒來日期：'+day;
@@ -92,7 +98,7 @@ function cancelEdit(){
  document.querySelectorAll('input[type=checkbox],input[type=radio]').forEach(e=>e.checked=false);
  el('submit-btn').textContent='確認送出日誌';el('diary-heading').textContent='記錄昨晚的睡眠';dirty=false;setStep(0,false);
 }
-function goAdmin(event){event?.preventDefault();if(saving)return;showPage('admin-page');setRoute('members');loadParticipants();refreshSummary().catch(e=>showToast(e.message,'error'));}
+async function goAdmin(event){event?.preventDefault();if(saving||!await workspaceAuth('members'))return;showPage('admin-page');setRoute('members');loadParticipants();refreshSummary().catch(e=>showToast(e.message,'error'));}
 const FIELD_NAMES={'f-headphone':'耳機使用分鐘','f-sleep-onset':'入睡所需分鐘','f-wakeups':'夜間醒來次數','f-waso':'夜間清醒分鐘'};
 function fail(message,id){const error=Error(message);error.field=id;throw error;}
 function integer(id,min,max){const raw=val(id);const n=Number(raw);if(raw===''||!Number.isInteger(n)||n<min||n>max)fail(`請填寫${FIELD_NAMES[id]}（${min}–${max} 的整數）`,id);return n;}
@@ -155,11 +161,12 @@ function editRecord(id){
 }
 async function openExport(){
  if(!session){postAuthAction='export';openAuth();return;}
- try{exportData=await allRows('/sleep_logs?order=member_id,date.desc,id.asc');el('export-modal').classList.add('open');el('export-table-wrap').textContent=`共 ${exportData.length} 筆授權紀錄，可下載完整 CSV。`;}catch(e){showToast(e.message,'error');}
+ const generation=authGeneration,user=session.user.id;
+ try{const loaded=await allRows('/sleep_logs?order=member_id,date.desc,id.asc');if(!session||generation!==authGeneration||session.user.id!==user)return;exportData=loaded;el('export-modal').classList.add('open');el('export-table-wrap').textContent=`共 ${exportData.length} 筆授權紀錄，可下載完整 CSV。`;}catch(e){showToast(e.message,'error');}
 }
 function closeExport(e){if(!e||e.target===el('export-modal'))el('export-modal').classList.remove('open');}
 function downloadCSV(){
- if(!exportData.length)return;
+ if(!session||!exportData.length)return;
  const cols=Object.keys(exportData[0]);const safe=v=>{v=typeof v==='object'?JSON.stringify(v):String(v??'');if(/^[=+\-@\t\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};
  const blob=new Blob(['\uFEFF'+[cols.join(','),...exportData.map(r=>cols.map(c=>safe(r[c])).join(','))].join('\r\n')],{type:'text/csv;charset=utf-8;'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='authorized_sleep_logs.csv';a.click();URL.revokeObjectURL(a.href);
@@ -168,8 +175,8 @@ let toastTimer;
 function showToast(msg,type='success'){el('toast').textContent=msg;el('toast').className='toast '+type+' show';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el('toast').classList.remove('show'),6500);}
 async function init(){
  try{
-  const response=await fetch('/api/config');if(!response.ok)throw Error('無法連線');config=await response.json();initChoiceGroups();updateAccount();
-  ['dashboard-link','home-dashboard-link'].forEach(id=>{el(id).href=config.dashboard_url||'/web/research.html';if(window.NSYSU_EMBED){el(id).target='_blank';el(id).rel='noopener';el(id).title='另開分頁查看研究資料';}});
+  const response=await fetch('/api/config');if(!response.ok)throw Error('無法連線');config=await response.json();initChoiceGroups();updateAccount();lineNotice();
+  ['dashboard-link','home-dashboard-link'].forEach(id=>{el(id).href='?view=workspace';});
   el('diary-form').addEventListener('input',()=>dirty=true);
   el('diary-form').addEventListener('change',()=>dirty=true);
   ['f-sleep-time','f-lights-out','f-morning-wake-time','f-wake-time'].forEach(id=>el(id).addEventListener('input',()=>{const raw=val(id);if(/^\d{4}$/.test(raw)){const clock=raw.slice(0,2)+':'+raw.slice(2);if(VTCA.validClock(clock))el(id).value=clock;}}));
@@ -183,14 +190,14 @@ async function init(){
   route();
  }catch(e){showPage('home-page');showToast('無法連線，請重新整理；若仍無法使用，請聯絡研究團隊','error');}finally{el('loading-screen').hidden=true;}
 }
-function updateAccount(){el('account-chip').textContent=session?'管理帳號已登入':'';el('signout-btn').hidden=!session;el('admin-login-button').hidden=!!session;el('archived-filter-row').hidden=!session;}
-function setRoute(view,member){const params=new URLSearchParams();if(view!=='home')params.set('view',view);if(member)params.set('member',member);if(member&&member===invitationMember&&invitationToken)params.set('invite',invitationToken);if(window.NSYSU_EMBED){window.NSYSU_EMBED.initial_query=params.toString();return;}const url=location.pathname+(params.size?'?'+params:'');if(location.pathname+location.search!==url)history.pushState({},'',url);}
+function updateAccount(){el('member-entry-help').innerHTML=session?'目前顯示已授權的受試者。選定後會保留選擇，專屬 QR Code 可直接進入睡眠日誌。':'請使用研究團隊提供的專屬 QR Code；研究人員可登入管理工作區選擇受試者。';el('account-chip').textContent=session?'管理者已登入':'';el('signout-btn').hidden=!session;el('admin-login-button').hidden=!!session;el('archived-filter-row').hidden=!session;}
+function setRoute(view,member){const params=new URLSearchParams();if(view!=='home')params.set('view',view);if(member)params.set('member',member);if(member&&member===invitationMember&&invitationToken)params.set('invite',invitationToken);const target=new URLSearchParams(window.NSYSU_EMBED?window.NSYSU_EMBED.initial_query:location.search).get('date');if(target&&member)params.set('date',target);if(window.NSYSU_EMBED){window.NSYSU_EMBED.initial_query=params.toString();return;}const url=location.pathname+(params.size?'?'+params:'');if(location.pathname+location.search!==url)history.pushState({},'',url);}
 function goHome(event){event?.preventDefault();if(saving)return;showPage('home-page');setRoute('home');}
 function startDiary(){if(saving)return;if(session){showMemberEntry('diary');return;}postAuthAction='entry';setRoute('start');openAuth();}
 function showMemberEntry(purpose){entryPurpose=purpose;clearParticipantSelection();el('entry-purpose').textContent=purpose==='history'?'歷史紀錄':'填寫睡眠日誌';el('entry-submit').textContent=purpose==='history'?'查看歷史紀錄 →':'在這台裝置填寫 →';el('member-entry').value='';el('entry-error').hidden=true;showPage('entry-page');setRoute(purpose==='history'?'history':'start');el('member-entry').focus();if(!directoryLoaded)loadParticipants();}
 function enterMember(event){event.preventDefault();if(!selectedParticipant){const row=participants.find(p=>p.member_id===val('member-entry').trim().toLowerCase());if(row)selectParticipant(row.member_id);else{el('entry-error').textContent='請先從下拉清單選擇一位受試者，再繼續。';el('entry-error').hidden=false;return;}}const mid=selectedParticipant.member_id;closeParticipantOptions();if(entryPurpose==='history'){currentMember=mid;showHistory();}else openMember(mid);}
 function showHistory(event){event?.preventDefault();if(saving)return;showPage('history-page');setRoute('history',currentMember);renderHistoryParticipants();loadHistoryParticipants();loadHistory();}
-function openAuth(){el('auth-status').textContent='';el('auth-title').textContent=postAuthAction==='participants'?'登入受試者管理員帳號':'登入日誌帳號';el('auth-dialog').showModal();el('auth-email').focus();}
+function openAuth(){if(!postAuthAction&&el('history-page').classList.contains('active'))postAuthAction='history';el('auth-status').textContent='';el('auth-title').textContent='管理者登入';el('auth-dialog').showModal();el('auth-email').focus();}
 function closeAuth(){el('auth-dialog').close();el('auth-password').value='';postAuthAction=null;}
 function startAnother(){if(saving)return;if(dirty&&!confirm('要清除尚未送出的內容，重新開始嗎？'))return;if(!currentMember){showMemberEntry('diary');return;}dirty=false;openMember(currentMember);}
 function resetDiary(){if(!dirty||confirm('要清除尚未送出的內容嗎？'))cancelEdit();}
@@ -206,5 +213,5 @@ function previousStep(){if(!saving&&currentStep>0)setStep(currentStep-1);}
 function handleDiarySubmit(event){event.preventDefault();if(currentStep<3)nextStep();else submitRecord();}
 function reviewList(pairs){return `<dl class="review-list">${pairs.map(([label,value])=>`<div><dt>${text(label)}</dt><dd>${text(value)}</dd></div>`).join('')}</dl>`;}
 function renderReview(){const fallback=document.querySelector('input[name=fallback]:checked')?.value||'未填';const groups=[['基本資料',0,[['姓名',val('f-name')],['最後醒來日期',val('f-date')],['耳機使用',val('f-headphone')+' 分鐘'],['配戴手錶',boolLabel(VTCA.tri(val('f-wore-watch')))],['助眠藥物',boolLabel(VTCA.tri(val('f-sleep-medication')))],['飲酒',boolLabel(VTCA.tri(val('f-drank-alcohol')))]]],['睡眠時間',1,[['上床',val('f-bed-date')+' '+val('f-sleep-time')],['開始嘗試入睡',val('f-lights-out')?val('f-lights-date')+' '+val('f-lights-out'):'未填'],['自覺入睡所需時間',val('f-sleep-onset')+' 分鐘'],['最後醒來',val('f-date')+' '+val('f-morning-wake-time')],['實際離床',val('f-out-date')+' '+val('f-wake-time')]]],['夜間狀況',2,[['夜醒次數',val('f-wakeups')+' 次'],['醒後狀況',fallback],['夜間清醒總時間',val('f-waso')===''?'未填':val('f-waso')+' 分鐘'],['干擾因素',[...document.querySelectorAll('#cg-disturbance input:checked')].map(i=>i.value).join('、')],['干擾程度',getScale('scale-disturbance')+'／5'],['睡眠品質',getScale('scale-quality')+'／5']]]];el('review-area').innerHTML=groups.map(([title,step,pairs])=>`<div class="review-block"><div class="review-heading"><h3>${title}</h3><button type="button" class="btn btn-text" onclick="setStep(${step})">修改${title}</button></div>${reviewList(pairs)}</div>`).join('');}
-function route(){const params=new URLSearchParams(window.NSYSU_EMBED?window.NSYSU_EMBED.initial_query:location.search),mid=params.get('member'),view=params.get('view');captureInvitation(params);const valid=mid&&/^ycc\d{8}$/.test(mid);if(valid)currentMember=mid;if(view==='members')goAdmin();else if(view==='history'){currentMember=valid?mid:null;showHistory();}else if(valid&&view!=='submitted')openMember(mid);else if(view==='start')startDiary();else goHome();}
+function route(){const params=new URLSearchParams(window.NSYSU_EMBED?window.NSYSU_EMBED.initial_query:location.search),mid=params.get('member'),view=params.get('view');captureInvitation(params);const valid=mid&&/^ycc\d{8}$/.test(mid);if(valid)currentMember=mid;if(view==='workspace')goWorkspace();else if(view==='qr'){if(valid)currentMember=mid;goQR();}else if(view==='members'){if(session)goAdmin();else goWorkspace();}else if(view==='history'){currentMember=valid?mid:null;showHistory();}else if(valid&&view!=='submitted')openMember(mid);else if(view==='start')startDiary();else goHome();}
 init();

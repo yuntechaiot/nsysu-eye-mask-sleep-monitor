@@ -69,6 +69,7 @@ function participantKeydown(event){
 async function selectParticipant(mid,focus=true){
  const row=participants.find(p=>p.member_id===mid);if(!row)return;
  const generation=authGeneration;
+ currentMember=mid;sessionStorage.setItem('nsysu-selected-member',mid);if(new URLSearchParams(window.NSYSU_EMBED?window.NSYSU_EMBED.initial_query:location.search).get('view')==='qr')setRoute('qr',mid);
  selectedParticipant=row;el('member-entry').value=participantLabel(row);el('selected-member-label').textContent=participantLabel(row);el('entry-error').hidden=true;
  el('entry-submit').disabled=!!row.archived_at;
  closeParticipantOptions();el('participant-share').hidden=entryPurpose==='history';

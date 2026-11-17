@@ -1,0 +1,38 @@
+# 本輪進度（2026-11-17）
+
+2026-11-18 雲端版：使用者明確同意「全程 LINE 操作、後台沿用 Supabase、不使用電腦」，並保留每兩小時提醒及填完停發。已完成並部署停用狀態的 Edge Function、12 張 RLS 私有表／受限 backend role、50 筆 PBKDF2 名冊及 inactive Cron；沒有匯入本機假日誌或綁定時間。雲端 HMAC、DB 連線、一次性排程票證與重放拒絕、snapshot 固定 capability 均已驗證。223 Python、45 Node／隔離 PG、Deno check、build／lint／Ruff／mypy 通過。綁定頁程式已完成但尚未發布；依原始指示，未同意前不 push，所以 LINE Webhook 尚未切換、推播與 Cron 均停用，雲端手機完整流程尚待發布後驗收。LINE 現月額度 200／已用18，只保留本人測試範圍；沒有升級付費方案。詳見 [雲端部署狀態](CLOUD_LINE_IMPLEMENTATION.md)。
+
+2026-11-18 已依「不要在我的電腦架設後端」停用本次每分鐘工作及 Demo 發送旗標，停止本次四個服務 port 與 64670 tunnel，資料及程式保留。先前驗收網址現已停止。後續使用者已確認完整功能沿用既有 Supabase 雲端，實作狀態見上段；不重啟本機服務。下文先前成果為本機驗證紀錄，不代表那些服務仍在運作。
+
+2026-11-18 背景視窗修正：本機 LINE 每分鐘排程原用 python.exe／Interactive，已備份 XML，改成同環境 pythonw.exe 並 Hidden=true，保留每分鐘觸發與所有業務規則，安裝腳本同步修正。windowless smoke 證實 GetConsoleWindow=0；沒有手動觸發額外 LINE 推播。已明確說明目前電腦關機後自訂 LINE 功能停止，GitHub push 不等於常駐部署；正式上線未完成。
+
+2026-11-18 本人真實提醒驗收：依使用者指示推進 Demo 時鐘至 09:00，`ycc00000050` 一則提醒 accepted、attempts=1，使用者親自確認收到；其後原日誌表單成功保存 2026-11-18 日誌，snapshot completed=true。11:00、13:00 各執行一次檢查，均無新日誌發送，原提醒保持唯一一筆。本人收訊→提交→當日停發路徑已驗證；時鐘停在 13:00，未測隔日恢復，未推送 GitHub，未連正式研究資料。細節見 [真實 LINE 本機 Demo](LIVE_LINE_DEMO.md)。
+
+2026-11-18 回應速度與可讀性：聊天交易 commit 後立即喚起背景 sender，只處理本次新事件工作，Webhook 不等待 LINE HTTP、也不執行日誌 tick；失敗才交由既有每分鐘 worker 接續。仍保留固定 retry key、durable lease 與去重。三選項字級 82→176、移除小字說明，手機 390px 預覽及 LINE 上傳圖片／本人掛載讀回核對完成；gateway 已重啟。Python 218、Ruff／mypy 通過。手機延遲待使用者實際點擊驗收；目前後端已無本人有效綁定，使用者可再綁新帳號。未推送 GitHub。
+
+2026-11-18 聊天室操作：本人專用三格圖文選單已建立、上傳及掛載，API 讀回相符，全體預設選單不變。新增驗簽 postback／文字指令與兩步取消確認，確認碼同本人、十分鐘、一次性，保留日誌及取消歷史、取消舊待發提醒後可綁新帳號。schema 3 已在兩份本機 DB 備份後升級，原本人 `ycc00000050` 綁定保留，待使用者親自驗收取消／換帳號。Python 214、JS 27、瀏覽器 11 組及 Ruff／mypy 通過；正式資料／旗標及 GitHub 不變。詳見 [Demo 操作](LIVE_LINE_DEMO.md)。
+
+2026-11-18 帳號更正：依使用者確認，LINE Demo 已改為 `ycc00000001`～`ycc00000050`，舊 `yc` 拒絕。私有 50 筆名冊及兩筆合成預覽已備份後更新，保留日誌、capability、研究對應及既有綁定時間；解除本次輸入錯誤造成的 Demo 限流。Python 206、JavaScript 27、瀏覽器 11 組、build／lint／Ruff／mypy 通過。回歸發現的登入交接備援計時器重複回應已修正並加測。服務／本機每分鐘工作恢復，新的本人重綁邀請已交給 LINE（accepted）；後端隨後確認本人 `ycc00000050` 真實綁定成功。測試時鐘仍為 2026-11-17 23:59，提醒起日 2026-11-18，待使用者進行提醒及停發驗收。沒有推送 GitHub，正式資料及提醒旗標未更動。
+
+最新追加：使用者已登入 LINE 管理帳號，明確授權只測試本人。公開 gateway 64670、獨立控制工具 64672、受限 HTTPS tunnel 已啟動；Secret 私下保存，測試 LIFF 已更新、Webhook 驗簽回報 Success、active=true，每分鐘本機 worker 已啟動且僅允許本人。正式提醒旗標仍 false。Python 197 passed；手機聊天事件／綁定／收訊仍待使用者實際操作確認。詳見 [真實 LINE 本機 Demo](LIVE_LINE_DEMO.md)。以下為先前合成驗收完成紀錄。
+
+狀態：本地實作、合成測試、瀏覽器操作與可開啟驗收版本完成；等待使用者驗收。正式 LINE／實機端到端因必要外部設定及測試授權不足而未執行。
+
+- 基準：fetch 後的 `origin/main`，完整 SHA `7e2deb8897a29e3cdd677b19ba41b88dbe704022`。
+- 新分支：`codex/line-diary-acceptance-20261117`；worktree：`../NSYSU_line_acceptance`。
+- 原 `NSYSU_apple_design` 內容完整保留，未使用 reset／clean。只逐項重用已讀過的 auth bridge，沒有覆蓋整套未推送改版。
+- 原版與 Apple 版每兩小時喚醒 workflow 未變更。新提醒由獨立每分鐘 worker 處理，不使用網站喚醒工作當提醒排程。
+- 管理者一次登入、QR／研究資料交接、權限撤銷後返回原位置、登出清除私有快取完成。
+- LIFF 後端身分驗證、私有研究帳號核對、follow／指令邀請、Webhook 簽章／去重、唯一綁定、限流完成。
+- 台灣次日 09:00 首提醒、每日七時段、正式提交後停止、研究期間、封鎖／停用停止、持久狀態、固定 retry key、三次 durable attempt／租約、十分鐘 grace 完成。
+- SQLite schema v1＋明確 v2 升級及回復測試、兩份私有／session PostgreSQL migration 與權限／回復測試完成；沒有套用正式資料庫。
+- 測試：Python 187、JavaScript 24、隔離 PostgreSQL 59、瀏覽器 11 組通過；build／lint／Ruff／mypy 通過。
+- 19 張自動桌面／手機寬度截圖、GitHub 基準改善前對照與實際操作錄存完成。實機驗證未執行。
+- 真實 LINE 只讀 bot-info 回應 200，確認官方 ID；真實訊息發送 0。私有 token 沒有複製給驗收服務。
+- EGM readiness 及兩次獨立程式審查的有效 findings 均已修正並加入回歸；沒有宣稱完整 interactive loop 收斂。
+- 已啟動 `http://127.0.0.1:64660/acceptance`，研究服務 64661；操作見 [驗收報告](ACCEPTANCE_REPORT.md)。
+- 尚缺正式設定及具體影響見 [LINE_SETUP](LINE_SETUP.md)。本輪沒有 push、PR 或部署，也沒有變更正式提醒開關。不得將代理測試通過當作使用者已驗收。
+
+最後保留驗證及精確變動清單由本輪 `private/original-manifest.json`（開始時 SHA-256）與 `artifacts/worktree-preservation.json` 記錄。它們只供本機驗收，不包含憑證，也未加入 Git。
+
+最後 SHA-256 保留稽核：原目錄全部受檢檔案內容未變更，原 status 仍為 87 項；喚醒 workflow 的 Git blob 與遠端基準一致。精確受檢檔案數見上述本機 JSON。

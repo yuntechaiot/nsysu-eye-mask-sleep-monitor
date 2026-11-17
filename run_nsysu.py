@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from werkzeug.serving import make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
-from nsysu.server import create_app
+from nsysu.server import RedactedRequestHandler, create_app
 
 ROOT = Path(__file__).resolve().parent
 DASHBOARD = ROOT / "frontend" / "source" / "數據監控室.py"
@@ -82,7 +82,7 @@ def main(stop_event=None):
     if dashboard_host not in ("0.0.0.0", "::"):
         probe_host = f"[{dashboard_host}]" if ":" in dashboard_host else dashboard_host
     print("正在啟動睡眠日誌與研究 Dashboard…", flush=True)
-    with make_server(host, port, create_app(), threaded=True) as web:
+    with make_server(host, port, create_app(), threaded=True, request_handler=RedactedRequestHandler) as web:
         try:
             child = subprocess.Popen([
                 sys.executable, "-m", "streamlit", "run", str(DASHBOARD),
