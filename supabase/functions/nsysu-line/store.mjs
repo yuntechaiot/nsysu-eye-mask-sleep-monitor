@@ -23,6 +23,7 @@ export class CloudStore {
  transaction(work){return this.database.transaction(async tx=>{await tx.query('set local role nsysu_line_api');return work(tx);});}
  config(tx){return one(tx,'select * from nsysu_line.config where id=true');}
  lock(tx,id){return tx.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[id]);}
+ lockAccount(tx,hash){return tx.query('select pg_advisory_xact_lock(hashtextextended($1,3))',[hash]);}
  async consumeCronTicket(authorization){
   if(typeof authorization!=='string'||!/^Bearer [a-f0-9]{64}$/.test(authorization)||authorization.length!==71)return false;
   const hash=await digest(authorization.slice(7));
@@ -80,8 +81,10 @@ export class CloudStore {
    await this.lock(tx,request.line_user);
    const account=await one(tx,'select * from nsysu_line.accounts where account_hash=$1 and active',[accountHash]);
    if(!account||account.ends&&dateText(account.ends)<dayOf(now))throw new FlowError('此研究帳號目前無法綁定，請聯絡研究團隊。',403);
+   await this.lockAccount(tx,accountHash);
    const conflicts=await rows(tx,'select * from nsysu_line.bindings where line_user=$1 or account_hash=$2',[request.line_user,accountHash]);
-   if(conflicts.some(b=>b.line_user!==request.line_user||b.account_hash!==accountHash))throw new FlowError('已有其他綁定。更換本人帳號請先回 LINE 取消綁定；他人綁定請聯絡研究團隊。',409);
+   if(conflicts.some(b=>b.account_hash===accountHash&&b.line_user!==request.line_user))throw new FlowError('此研究帳號已綁定其他 LINE。每個研究帳號只能綁定一個 LINE，請先由原 LINE 取消綁定。',409);
+   if(conflicts.some(b=>b.line_user===request.line_user&&b.account_hash!==accountHash))throw new FlowError('你的 LINE 已綁定其他研究帳號，請先回 LINE 取消原綁定後再更換帳號。',409);
    if(conflicts.some(b=>!b.active))throw new FlowError('此綁定已停用，請聯絡研究團隊。',403);
    await tx.query('update nsysu_line.link_proofs set used_at=$2 where token_hash=$1 and used_at is null',[tokenHash,now]);
    await tx.query('insert into nsysu_line.link_proofs values($1,$2,$3,$4,null)',[nonceHash,tokenHash,accountHash,request.expires_at]);
@@ -149,6 +152,7 @@ export class CloudStore {
    if(!binding?.active||!confirm||confirm.account_hash!==binding.account_hash||instant(confirm.bound_at)!==instant(binding.bound_at))return message('確認已失效或綁定已變更。請重新點「取消綁定」。');
    await this.invalidate(tx,id,now);
    if(action==='keep')return message(`已保留 ${binding.member} 的綁定，提醒設定不變。`);
+   await this.lockAccount(tx,binding.account_hash);
    await tx.query('insert into nsysu_line.binding_history(line_user,account_hash,study,member,bound_at,reminder_start,cancelled_at) values($1,$2,$3,$4,$5,$6,$7)',[id,binding.account_hash,binding.study,binding.member,binding.bound_at,binding.reminder_start,now]);
    await tx.query('delete from nsysu_line.bindings where line_user=$1',[id]);
    await tx.query("update nsysu_line.outbox set status='cancelled',processed_at=$2 where line_user=$1 and (kind='diary' or slot like 'binding-test:%') and status in ('pending','retry','uncertain')",[id,now]);
@@ -162,8 +166,10 @@ export class CloudStore {
    if(event.action==='link_failed')return entry('LINE 授權未完成，尚未新增綁定。請重新開始。');
    const account=await one(tx,'select *,starts::text as start_day,ends::text as end_day from nsysu_line.accounts where account_hash=$1 and active',[proof.account_hash]);
    if(!account||account.end_day&&account.end_day<dayOf(now))return message('此研究帳號目前無法綁定，請聯絡研究團隊。');
+   await this.lockAccount(tx,proof.account_hash);
    const others=await rows(tx,'select * from nsysu_line.bindings where account_hash=$1 or line_user=$2',[proof.account_hash,id]);
-   if(others.some(b=>b.account_hash!==proof.account_hash||b.line_user!==id))return message('此帳號或 LINE 已有其他綁定。請先取消本人舊綁定，或聯絡研究團隊。');
+   if(others.some(b=>b.account_hash===proof.account_hash&&b.line_user!==id))return message('此研究帳號已綁定其他 LINE。每個研究帳號只能綁定一個 LINE，請先由原 LINE 取消綁定。');
+   if(others.some(b=>b.line_user===id&&b.account_hash!==proof.account_hash))return message('你的 LINE 已綁定其他研究帳號，請先取消原綁定後再更換帳號。');
    if(others.some(b=>!b.active))return message('此綁定已停用，請聯絡研究團隊。');
    let start=others[0]?dateText(others[0].reminder_start):nextDay(now);
    if(!others.length){

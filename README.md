@@ -4,7 +4,7 @@
 
 最新架構使用既有 Supabase 與 Streamlit 雲端：受試者從 LINE 選單綁定、隔日 09:00 開始收到個人日誌連結，未填每兩小時提醒，正式提交後停止當日提醒。真實 LINE 本機後端與 Windows Demo 工作已停用，正式運作不依賴使用者電腦；使用者另行手動啟動的隔離網頁驗收只模擬 LINE。
 
-LINE 已接通既有 Supabase 雲端，開放既有有效研究名冊帳號自行綁定；成功後立即送出本人日誌測試連結，正式提醒從台灣隔日 09:00 開始，保留兩小時提醒及填完當日停發。使用者已在手機完成雲端綁定，原首次提醒為台灣 2026/11/19 09:00。本版另依使用者要求統一 DocterCloud 管理者登入、移除重複連線表單、提供首頁本人 QR Code 登入，並補上官方 LINE 入口。圖文選單保留全體預設，另在加入好友／綁定操作後背景同步個人設定。既有 238 個 Python、五種寬度 QR UI、型別檢查通過；最新 89 個 JavaScript／隔離 PostgreSQL 測試、Deno check、lint 通過，先前 build 已驗證。真正 DocterCloud 上游成功登入及首次排程送達仍須各自驗收；詳見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md) 與 [登入／本人 QR Code](docs/UNIFIED_LOGIN_AND_PERSONAL_QR.md)。
+LINE 已接通既有 Supabase 雲端，開放既有有效研究名冊帳號自行綁定；成功後立即送出本人日誌測試連結，正式提醒從台灣隔日 09:00 開始，保留兩小時提醒及填完當日停發。研究帳號與 LINE 採一對一綁定，原 LINE 確認取消後才可換綁；帳號交易鎖與資料庫唯一約束共同處理同時搶綁。使用者已在手機完成雲端綁定，原首次提醒為台灣 2026/11/19 09:00。本版另依使用者要求統一 DocterCloud 管理者登入、移除重複連線表單、提供首頁本人 QR Code 登入，並補上官方 LINE 入口。圖文選單保留全體預設，另在加入好友／綁定操作後背景同步個人設定。既有 238 個 Python、五種寬度 QR UI、型別檢查通過；最新 92 個 JavaScript／隔離 PostgreSQL 測試、Deno check、lint 通過，先前 build 已驗證。真正 DocterCloud 上游成功登入及首次排程送達仍須各自驗收；詳見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md) 與 [登入／本人 QR Code](docs/UNIFIED_LOGIN_AND_PERSONAL_QR.md)。
 
 ## 隔離本機網頁驗收
 

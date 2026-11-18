@@ -243,6 +243,48 @@ test('wrong credentials, inactive account and another LINE binding cannot overwr
  assert.equal((await f.records('bindings'))[0].line_user,identity);
 });
 
+test('two LINE confirmations for the same research account leave one owner and one diary test',async t=>{
+ const f=await fixture(t),proofs=[];
+ for(const who of [identity,'SYNTHETIC_LINE_B']){
+  await f.send('start',{identity:who});
+  const response=await f.prepare('ycc00000050');assert.equal(response.status,200);
+  proofs.push({who,nonce:new URL((await response.json()).link_url).searchParams.get('nonce')});
+ }
+ await Promise.all(proofs.map(proof=>f.send('linked',{identity:proof.who,nonce:proof.nonce})));
+ const bindings=await f.records('bindings');assert.equal(bindings.length,1);
+ assert.equal(bindings[0].account_hash,await f.protocol.digest('ycc00000050'));
+ const tests=f.calls.filter(call=>call.payload.messages[0].altText?.includes('【日誌連結測試】'));
+ assert.equal(tests.length,1);assert.equal(tests[0].payload.to,bindings[0].line_user);
+ const refused=f.calls.find(call=>call.payload.messages[0].text?.includes('每個研究帳號只能綁定一個 LINE'));
+ assert.ok(refused);assert.notEqual(refused.payload.to,bindings[0].line_user);
+});
+
+test('database rejects a second LINE for an account and a second account for a LINE',async t=>{
+ const f=await fixture(t);await f.bind();
+ const [binding]=await f.records('bindings');
+ await assert.rejects(f.db.query('insert into nsysu_line.bindings values($1,$2,$3,$4,true)',
+  ['SYNTHETIC_LINE_B',binding.account_hash,binding.bound_at,binding.reminder_start]),error=>error.code==='23505');
+ await assert.rejects(f.db.query('insert into nsysu_line.bindings values($1,$2,$3,$4,true)',
+  [identity,await f.protocol.digest('ycc00000050'),binding.bound_at,binding.reminder_start]),error=>error.code==='23505');
+ assert.equal((await f.records('bindings')).length,1);
+});
+
+test('only confirmed cancellation releases an account for another LINE; previous LINE gets no later diary',async t=>{
+ const f=await fixture(t);await f.bind();
+ await f.send('start',{identity:'SYNTHETIC_LINE_B'});
+ const blocked=await f.prepare();assert.equal(blocked.status,409);
+ assert.ok((await blocked.json()).error.includes('每個研究帳號只能綁定一個 LINE'));
+ await f.send('cancel');const confirmation=f.calls.at(-1).payload.messages[0].template.actions[0].data.slice(8);
+ await f.send('start',{identity:'SYNTHETIC_LINE_B'});assert.equal((await f.prepare()).status,409);
+ await f.send(confirmation);assert.equal((await f.records('bindings')).length,0);
+ await f.bind('ycc00000001','SYNTHETIC_LINE_B');
+ await f.at('2026-11-18T09:00:00+08:00');await f.store.plan();
+ const [job]=(await f.records('outbox')).filter(item=>item.kind==='diary');
+ assert.ok(job);await f.store.dispatch(job.job_key,f.line);
+ assert.equal(job.line_user,'SYNTHETIC_LINE_B');
+ assert.equal(f.calls.filter(call=>call.payload.messages[0].altText?.startsWith('請完成')&&call.payload.to===identity).length,0);
+});
+
 test('cancel requires confirmation, preserves diary, releases account, invalidates stale confirmation',async t=>{
  const f=await fixture(t);await f.bind();
  await f.db.query("insert into public.sleep_logs values('ycc00000001','2026-11-18','wake_date')");
