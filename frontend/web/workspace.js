@@ -1,6 +1,32 @@
 'use strict';
 const dashboardPeers=new Set(),dashboardFrames=new Set();
 function notifyResearchLogout(){if(config?.dashboard_url)for(const frame of dashboardFrames)frame.postMessage({type:'nsysu:logout'},new URL(config.dashboard_url,location.href).origin);}
+function notifyResearchSession(){if(session&&config?.dashboard_url)for(const frame of dashboardFrames)frame.postMessage({type:'nsysu:session-update',session},new URL(config.dashboard_url,location.href).origin);}
+async function restoreResearchSession(){
+ const query=window.NSYSU_EMBED?window.NSYSU_EMBED.initial_query:location.search;
+ if(!config?.dashboard_url)return;
+ const origin=new URL(config.dashboard_url,location.href).origin;
+ if(new URLSearchParams(query).get('auth_return')!=='1'&&sessionStorage.getItem('nsysu-research-return-origin')!==origin)return;
+ let peer;try{peer=window.opener||window.parent.opener;}catch{return;}
+ if(!peer)return;
+ const nonce=crypto.randomUUID(),generation=authGeneration;
+ await new Promise(resolve=>{
+  let pending=true;
+  const finish=()=>{if(!pending)return;pending=false;clearTimeout(timer);removeEventListener('message',receive);resolve();};
+  const receive=event=>{
+   if(!pending||event.source!==peer||event.origin!==origin||event.data?.type!=='nsysu:return-session'||event.data.nonce!==nonce)return;
+   if(generation!==authGeneration){finish();return;}
+   const saved=event.data.session;
+   if(saved===null){session=null;authGeneration++;sessionStorage.removeItem('vtca-session');sessionStorage.removeItem('nsysu-research-return-origin');}
+   else if(saved?.user?.app_metadata?.diary_staff===true&&typeof saved.user.id==='string'&&typeof saved.access_token==='string'&&typeof saved.refresh_token==='string'){
+    session=saved;authGeneration++;sessionStorage.setItem('vtca-session',JSON.stringify(saved));sessionStorage.setItem('nsysu-research-return-origin',origin);dashboardPeers.add(peer.parent||peer);dashboardFrames.add(peer);
+   }
+   finish();
+  };
+  const timer=setTimeout(finish,1500);addEventListener('message',receive);
+  try{peer.postMessage({type:'nsysu:return-session-request',nonce},origin);}catch{finish();}
+ });
+}
 async function workspaceAuth(action='workspace'){
  if(session){
   try{const allowed=await diaryRPC('diary_staff_status',{});if(allowed===true)return true;}
@@ -26,7 +52,7 @@ addEventListener('message',event=>{
  if(!config?.dashboard_url||event.origin!==new URL(config.dashboard_url,location.href).origin||![...dashboardPeers].some(peer=>peer===event.source||peer===event.source?.parent))return;
  if(event.data?.type==='nsysu:session-request'&&typeof event.data.nonce==='string'){dashboardFrames.add(event.source);event.source.postMessage({type:'nsysu:session',nonce:event.data.nonce,session},event.origin);}
  if(event.data?.type==='nsysu:logout')void signOut(true);
- if(event.data?.type==='nsysu:session-update'&&event.data.session?.user?.app_metadata?.diary_staff===true&&(!session||event.data.session.user.id===session.user.id)){session=event.data.session;sessionStorage.setItem('vtca-session',JSON.stringify(session));}
+ if(event.data?.type==='nsysu:session-update'&&session&&event.data.session?.user?.app_metadata?.diary_staff===true&&event.data.session.user.id===session.user.id){session=event.data.session;sessionStorage.setItem('vtca-session',JSON.stringify(session));}
 });
 function lineNotice(){
  if((config.simulated||config.live_demo)&&!el('test-mode-notice')){const notice=document.createElement('p');notice.id='test-mode-notice';notice.className='info-box';notice.textContent=config.live_demo?'本機 LINE 實測：日誌僅保存於隔離測試資料庫。':'隔離驗收模式：合成資料，不發送真實 LINE 訊息。';document.getElementById('main').prepend(notice);}

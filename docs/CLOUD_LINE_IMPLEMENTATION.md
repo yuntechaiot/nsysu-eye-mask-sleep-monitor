@@ -1,8 +1,8 @@
 # LINE 全程操作與既有雲端串接
 
-目前狀態：雲端後端已部署為停用待驗收，網站綁定頁尚未發布，LINE Webhook 尚未切換。不能宣稱已可從手機完成雲端綁定。223 個 Python、45 個 JavaScript／隔離 PostgreSQL 測試、Deno check、build／lint／Ruff／mypy 通過。本輪未啟動任何本機 server。
+目前狀態：雲端後端已部署為停用待驗收，網站綁定頁尚未發布，LINE Webhook 尚未切換。不能宣稱已可從手機完成雲端綁定。225 個 Python、55 個 JavaScript／隔離 PostgreSQL 測試、Deno check、build／lint／Ruff／mypy 通過。雲端部署未使用本機 server；其後使用者另行要求本機頁面驗收，已由使用者手動開啟隔離驗收服務，返回首頁／重新整理／續期／登出的四項瀏覽器檢查通過。
 
-2026-11-18 使用者明確確認：受試者全程在 LINE 操作，後台可沿用既有 Supabase；不使用使用者電腦。保留首次綁定台灣次日 09:00、未填每兩小時提醒、提交成功停止當日提醒。原本機後端與 Windows 工作保持停用。
+2026-11-18 使用者明確確認：受試者全程在 LINE 操作，後台可沿用既有 Supabase；不使用使用者電腦。保留首次綁定台灣次日 09:00、未填每兩小時提醒、提交成功停止當日提醒。原本機真實 LINE 後端與 Windows 工作保持停用。
 
 ## 目標架構
 
@@ -21,7 +21,7 @@
 
 雲端函式：`https://ztsyxnrnemvcladbaaem.supabase.co/functions/v1/nsysu-line`。`/health` 是 process liveness；實際 DB 連線另用一次性票證呼叫停用狀態的 `/tick`，回傳 200、jobs=[]，同票證重放為 401。Webhook 原始 bytes HMAC 煙霧測試 200、processed=0；未驗簽請求為 401。這些是受控 API 驗證，並非宣稱 LINE Console Verify 或手機收訊已完成。
 
-`config.enabled=false`、`allow_all=false`、allowlist 僅原先本人；Cron `nsysu-line-cloud-minute` 為 inactive，每分鐘規則已建立。pg_net 呼叫雲端公開健康端點實測 200、沒有逾時或錯誤，證明資料庫到 Edge 的雲端網路可用。Cloud binding 為 0，必須於正式雲端入口重新綁定，才能依真正的成功日期計算首次提醒。本機 Windows 工作保持 Disabled，原四個 Demo port 無 listener。
+`config.enabled=false`、`allow_all=false`、allowlist 僅原先本人；Cron `nsysu-line-cloud-minute` 為 inactive，每分鐘規則已建立。pg_net 呼叫雲端公開健康端點實測 200、沒有逾時或錯誤，證明資料庫到 Edge 的雲端網路可用。Cloud binding 為 0，必須於正式雲端入口重新綁定，才能依真正的成功日期計算首次提醒。本機真實 LINE 的 Windows 工作保持 Disabled、64670／64672 停止；使用者另行手動啟動的 64660／64661 僅提供隔離網頁驗收。
 
 Edge Function Secrets 已安全設定，沒有寫進 Git。Cron 採兩分鐘一次性票證：資料庫只存 SHA-256，排程命令不含長效秘密，只有資料庫排程可以建立票證，函式原子消耗且拒絕重放。`pg_net` 新安裝位置已修正到 extensions；安全 Advisors 僅保留既有 Auth leaked-password protection 警告，未自行變更 Auth 方案或密碼政策。12 張表皆啟用 RLS，瀏覽器不能讀私有 schema，backend role 也不能直接讀 Vault 或日誌表，只能透過範圍受控的 snapshot。
 

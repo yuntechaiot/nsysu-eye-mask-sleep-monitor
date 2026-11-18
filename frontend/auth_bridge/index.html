@@ -11,6 +11,12 @@ function applyPeer(saved){
  if(!current||current.access_token!==saved.access_token){sessionStorage.setItem(key,JSON.stringify(saved));result({ready:true,session:saved,session_updated:crypto.randomUUID()});}
  else if(!hydrated)result({ready:true,session:saved});hydrated=true;
 }
+addEventListener('storage',event=>{
+ if(event.key!==key||event.storageArea!==sessionStorage)return;
+ let saved=null;try{saved=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
+ hydrated=true;result({ready:true,session:saved,...(saved?{session_updated:crypto.randomUUID()}:{logged_out:crypto.randomUUID()})});
+ if(peer&&peerOrigin)peer.postMessage({type:saved?'nsysu:session-update':'nsysu:logout',session:saved},peerOrigin);
+});
 addEventListener('message',event=>{
  if(peer&&event.source===peer&&event.origin===peerOrigin){
   if(event.data?.type==='nsysu:session'&&nonce&&event.data.nonce===nonce){nonce=null;applyPeer(event.data.session);}

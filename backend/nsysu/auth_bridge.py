@@ -1,9 +1,15 @@
-"""Same-origin browser session handoff; credentials never appear in a URL."""
+"""Trusted browser session handoffs; credentials never appear in a URL."""
 from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
 _component = components.declare_component('nsysu_auth_bridge', path=str(Path(__file__).resolve().parents[2] / 'frontend/auth_bridge'))
+_home_component = components.declare_component('nsysu_auth_return', path=str(Path(__file__).resolve().parents[2] / 'frontend/auth_return'))
+
+
+def home_link(diary_url):
+    """Return through a trusted browser handoff, never credentials in a URL."""
+    _home_component(diary_url=diary_url, key='research_home_link', default=None)
 
 
 def synchronize(diary_url):

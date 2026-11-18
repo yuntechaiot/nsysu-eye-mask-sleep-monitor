@@ -51,6 +51,14 @@ def test_invitation_deep_link_is_validated_and_preserved(cloud_config):
             diary_document(cloud_config, query)
 
 
+def test_cloud_home_preserves_only_the_non_secret_return_marker(cloud_config):
+    html = diary_document(cloud_config, {'auth_return': '1', 'access_token': 'NEVER_IN_URL'})
+    assert 'auth_return=1' in html
+    assert 'NEVER_IN_URL' not in html
+    html = diary_document(cloud_config, {'auth_return': '<script>bad</script>'})
+    assert 'auth_return=' not in html
+
+
 def test_streamlit_home_renders_without_running_flask_or_querying_research_data(cloud_config, monkeypatch):
     import requests
     monkeypatch.setattr(requests, 'request', lambda *a, **k: pytest.fail('首頁不應由伺服器查詢研究資料'))
@@ -69,6 +77,17 @@ def test_cloud_dashboard_retains_latest_two_login_sources(cloud_config):
     next(r for r in app.radio if r.label == '我要查看').set_value('手錶平台').run()
     assert [field.label for field in app.text_input] == ['平台帳號', '平台密碼']
     assert all('127.0.0.1:8000' not in button.proto.url for button in app.get('link_button'))
+
+
+def test_dashboard_home_link_uses_browser_handoff_without_credentials(cloud_config, monkeypatch):
+    from nsysu import auth_bridge
+    calls = []
+    monkeypatch.setattr(auth_bridge, '_home_component', lambda **args: calls.append(args))
+    app = AppTest.from_file(str(ROOT / 'streamlit_app.py'))
+    app.query_params['view'] = 'dashboard'
+    app.run()
+    assert not app.exception
+    assert calls == [{'diary_url': 'https://research.example.org/', 'key': 'research_home_link', 'default': None}]
 
 
 def test_invalid_member_shows_error(cloud_config):

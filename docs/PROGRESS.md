@@ -1,5 +1,7 @@
 # 本輪進度（2026-11-17）
 
+2026-11-18 返回首頁登入接續修正：研究頁原使用的 `st.link_button` 開啟無 opener 的新分頁，首頁的分頁儲存空間因此沒有登入資料。已改為專用返回元件及受控 postMessage 交接，核對來源 origin、實際開啟的視窗與一次性 nonce；網址只帶非秘密的 `auth_return=1`，不包含憑證，也不改成永久 localStorage。重新整理後會依非秘密的來源標記重建可信交接連線，讓續期／主動登出持續同步，授權仍由原後端檢查。225 個 Python、55 個 Node／隔離 PG 測試、build／lint／Ruff／mypy 通過。使用者手動重啟後，四項真實 Edge 瀏覽器檢查通過：首頁登入→研究→返回→重新整理；模擬憑證到期後自動續期、研究資料可讀且再次返回取得新憑證；主動登出清除相關頁面；直接登入研究頁後返回首頁。證據在 `artifacts/return-session/checks.json` 與截圖；測試連線僅 localhost，不改日誌、時鐘或正式資料。沒有推送、部署或啟用真實 LINE。本機登入 access token 為一小時；操作時提前 30 秒檢查並續期，未設定閒置或固定最長登入時間。
+
 2026-11-18 雲端版：使用者明確同意「全程 LINE 操作、後台沿用 Supabase、不使用電腦」，並保留每兩小時提醒及填完停發。已完成並部署停用狀態的 Edge Function、12 張 RLS 私有表／受限 backend role、50 筆 PBKDF2 名冊及 inactive Cron；沒有匯入本機假日誌或綁定時間。雲端 HMAC、DB 連線、一次性排程票證與重放拒絕、snapshot 固定 capability 均已驗證。223 Python、45 Node／隔離 PG、Deno check、build／lint／Ruff／mypy 通過。綁定頁程式已完成但尚未發布；依原始指示，未同意前不 push，所以 LINE Webhook 尚未切換、推播與 Cron 均停用，雲端手機完整流程尚待發布後驗收。LINE 現月額度 200／已用18，只保留本人測試範圍；沒有升級付費方案。詳見 [雲端部署狀態](CLOUD_LINE_IMPLEMENTATION.md)。
 
 2026-11-18 已依「不要在我的電腦架設後端」停用本次每分鐘工作及 Demo 發送旗標，停止本次四個服務 port 與 64670 tunnel，資料及程式保留。先前驗收網址現已停止。後續使用者已確認完整功能沿用既有 Supabase 雲端，實作狀態見上段；不重啟本機服務。下文先前成果為本機驗證紀錄，不代表那些服務仍在運作。

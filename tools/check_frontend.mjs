@@ -4,3 +4,4 @@ for(const name of await fs.readdir('frontend/web'))if(name.endsWith('.js'))new v
 console.log('Frontend JavaScript syntax passed');
 
 new vm.Script(await fs.readFile('frontend/line/bind.js','utf8'),{filename:'bind.js'});
+for(const name of ['auth_bridge','auth_return'])new vm.Script((await fs.readFile(`frontend/${name}/index.html`,'utf8')).match(/<script>([\s\S]*?)<\/script>/)[1],{filename:name+'.js'});

@@ -334,13 +334,14 @@ def main(configure_page=True):
     </style>""", unsafe_allow_html=True)
     from .apple_theme import apply as apply_apple_theme
     apply_apple_theme()
-    from .auth_bridge import synchronize
+    from .auth_bridge import home_link, synchronize
     if not synchronize(diary_url()):
         return
     st.title("睡眠與生理研究")
     st.caption("受試者健康總覽 · 生理量測 · 睡眠分析")
     st.sidebar.title("研究工作區")
-    st.sidebar.link_button("← 回到日誌首頁", diary_url())
+    with st.sidebar:
+        home_link(diary_url())
     mode = st.sidebar.radio("我要查看", [RESEARCH, PLATFORM], index=0, key="flow_mode")
     workspace = st.sidebar.radio("功能", ["查看資料", "資料管理"], key="workspace_page")
     if not connected(mode):

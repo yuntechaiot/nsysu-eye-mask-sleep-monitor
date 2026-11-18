@@ -40,6 +40,8 @@ def diary_document(config, query=None):
     view = query.get('view')
     if view in {'history', 'members', 'start', 'diary', 'submitted', 'workspace', 'qr'}:
         allowed['view'] = view
+    if query.get('auth_return') == '1':
+        allowed['auth_return'] = '1'
     target = str(query.get('date', ''))
     if target:
         from datetime import date

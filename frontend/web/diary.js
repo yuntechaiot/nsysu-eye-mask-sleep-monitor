@@ -11,7 +11,7 @@ async function authHeaders() {
   if(session && session.expires_at*1000 < Date.now()+30000){
     const response=await fetch(config.supabase_url+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:config.publishable_key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})});
     if(!response.ok){await signOut();throw Error('登入已到期，請重新登入');}
-    session=await response.json();if(session.user?.app_metadata?.diary_staff!==true){await signOut();throw Error('此帳號沒有日誌管理權限');}sessionStorage.setItem('vtca-session',JSON.stringify(session));
+    session=await response.json();if(session.user?.app_metadata?.diary_staff!==true){await signOut();throw Error('此帳號沒有日誌管理權限');}sessionStorage.setItem('vtca-session',JSON.stringify(session));notifyResearchSession();
   }
   return {apikey:config.publishable_key,'Content-Type':'application/json',...(session?{Authorization:'Bearer '+session.access_token}:{})};
 }
@@ -31,7 +31,7 @@ async function signIn(event){
     const r=await fetch(config.supabase_url+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:config.publishable_key,'Content-Type':'application/json'},body:JSON.stringify({email:VTCA.diaryEmail(val('auth-email')),password:val('auth-password')})});
     if(!r.ok)throw Error('登入失敗，請檢查帳密');
     const signed=await r.json();if(signed.user?.app_metadata?.diary_staff!==true)throw Error('此帳號沒有日誌管理權限');
-    session=signed;authGeneration++;sessionStorage.setItem('vtca-session',JSON.stringify(session));el('auth-password').value='';
+    session=signed;authGeneration++;sessionStorage.setItem('vtca-session',JSON.stringify(session));notifyResearchSession();el('auth-password').value='';
     const action=postAuthAction;updateAccount();closeAuth();await loadParticipants();
     if(el('admin-page').classList.contains('active'))await refreshSummary();
     if(el('history-page').classList.contains('active')){await loadHistoryParticipants();await loadHistory();}
@@ -49,7 +49,7 @@ async function signIn(event){
 async function signOut(localOnly=false){
   if(!localOnly)notifyResearchLogout();
   if(session&&!localOnly)void fetch(config.supabase_url+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:config.publishable_key,Authorization:'Bearer '+session.access_token}}).catch(()=>{});
-  session=null;authGeneration++;sessionStorage.removeItem('vtca-session');records=[];exportData=[];allSummary={};editingId=null;
+  session=null;authGeneration++;sessionStorage.removeItem('vtca-session');sessionStorage.removeItem('nsysu-research-return-origin');records=[];exportData=[];allSummary={};editingId=null;
   postAuthAction=null;invitationCache.clear();fixedInvitationLoads.clear();clearParticipantNames();el('history-area').replaceChildren();el('qr-grid').replaceChildren();el('selected-qr').replaceChildren();el('selected-qr').removeAttribute('title');el('participant-link').value='';el('selected-member-label').textContent='';updateAccount();el('auth-password').value='';el('submission-receipt').textContent='';
   closeManagementDialog();clearHistoryDirectory();
   el('export-table-wrap').textContent='請先登入';closeExport();cancelEdit();
@@ -175,7 +175,7 @@ let toastTimer;
 function showToast(msg,type='success'){el('toast').textContent=msg;el('toast').className='toast '+type+' show';clearTimeout(toastTimer);toastTimer=setTimeout(()=>el('toast').classList.remove('show'),6500);}
 async function init(){
  try{
-  const response=await fetch('/api/config');if(!response.ok)throw Error('無法連線');config=await response.json();initChoiceGroups();updateAccount();lineNotice();
+  const response=await fetch('/api/config');if(!response.ok)throw Error('無法連線');config=await response.json();await restoreResearchSession();initChoiceGroups();updateAccount();lineNotice();
   ['dashboard-link','home-dashboard-link'].forEach(id=>{el(id).href='?view=workspace';});
   el('diary-form').addEventListener('input',()=>dirty=true);
   el('diary-form').addEventListener('change',()=>dirty=true);

@@ -1,0 +1,31 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>回到日誌首頁</title>
+<style>body{margin:0;font-family:system-ui,-apple-system,sans-serif}a{display:flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:40px;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;color:#172033;background:#fff;text-decoration:none;font-size:14px}a:hover{background:#f5f5f7}a:focus-visible{outline:3px solid #2563eb;outline-offset:2px}</style>
+<a id="home" href="#">← 回到日誌首頁</a><script>
+'use strict';
+const key='vtca-session',opened=new Set(),clients=new Set();let diaryURL=null;
+function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},location.origin);}
+function saved(){try{return JSON.parse(sessionStorage.getItem(key)||'null');}catch{return null;}}
+function publish(){const session=saved();for(const client of clients)try{client.postMessage({type:session?'nsysu:session-update':'nsysu:logout',session},diaryURL.origin);}catch{clients.delete(client);}}
+document.getElementById('home').addEventListener('click',event=>{
+ event.preventDefault();if(!diaryURL)return;
+ const child=window.open(diaryURL.href,'_blank');if(child)opened.add(child);
+});
+addEventListener('message',event=>{
+ if(event.source===parent&&event.origin===location.origin&&event.data?.type==='streamlit:render'){
+  try{const url=new URL(event.data.args.diary_url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error();url.searchParams.set('auth_return','1');diaryURL=url;document.getElementById('home').href=url.href;}catch{diaryURL=null;}
+  return;
+ }
+ if(!diaryURL||event.origin!==diaryURL.origin||![...opened].some(child=>child===event.source||child===event.source?.parent))return;
+ if(event.data?.type==='nsysu:return-session-request'&&typeof event.data.nonce==='string'&&event.data.nonce.length>0&&event.data.nonce.length<=128){
+  clients.add(event.source);event.source.postMessage({type:'nsysu:return-session',nonce:event.data.nonce,session:saved()},diaryURL.origin);
+ }
+ if(!clients.has(event.source))return;
+ if(event.data?.type==='nsysu:logout'){sessionStorage.removeItem(key);publish();}
+ if(event.data?.type==='nsysu:session-update'){
+  const current=saved(),next=event.data.session;
+  if(current&&next?.user?.id===current.user?.id&&next?.user?.app_metadata?.diary_staff===true&&typeof next.access_token==='string'&&typeof next.refresh_token==='string'){sessionStorage.setItem(key,JSON.stringify(next));publish();}
+ }
+});
+addEventListener('storage',event=>{if(event.key===key&&event.storageArea===sessionStorage&&diaryURL)publish();});
+send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:48});
+</script></html>
