@@ -33,6 +33,8 @@ def synchronize(diary_url):
         st.session_state['_auth_update_event'] = value['session_updated']
         saved, current = value.get('session'), st.session_state.get('supabase_session')
         if isinstance(saved, dict) and saved.get('access_token') and saved.get('refresh_token'):
+            if isinstance(current, dict) and saved.get('access_token') != current.get('access_token'):
+                st.session_state.pop('platform_token', None)
             if isinstance(current, dict) and saved.get('user', {}).get('id') != current.get('user', {}).get('id'):
                 for key in ('platform_token', 'dashboard_data', 'flow_platform_members'):
                     st.session_state.pop(key, None)

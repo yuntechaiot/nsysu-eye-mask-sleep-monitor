@@ -131,7 +131,7 @@ def test_query_is_explicit_and_changed_dates_do_not_show_stale_data(monkeypatch)
     next(x for x in app.radio if x.label == '日期範圍').set_value('近 30 天').run()
     assert len(app.tabs) == 0
     assert any('選項已變更' in x.value for x in app.info)
-    next(x for x in app.button if x.label == '登出目前資料來源').click().run()
+    next(x for x in app.button if x.label == '登出管理者帳號').click().run()
     assert 'dashboard_data' not in app.session_state
     assert len(app.tabs) == 0 and not app.exception
 

@@ -46,6 +46,6 @@ export const cancelAction={type:'postback',label:'取消綁定',data:'binding:ca
 export function diaryURL(base,member,invite,day){
  const url=new URL(base);
  if(url.protocol!=='https:')throw new Error('HTTPS required');
- url.search='';url.hash='';url.searchParams.set('member',member);url.searchParams.set('invite',invite);url.searchParams.set('date',day);
+ url.search='';url.hash='';url.searchParams.set('member',member);url.searchParams.set('invite',invite);if(day)url.searchParams.set('date',day);
  return url.href;
 }

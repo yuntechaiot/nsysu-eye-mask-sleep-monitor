@@ -7,9 +7,10 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from requests import RequestException
 from werkzeug.serving import WSGIRequestHandler
-from .store import Store, settings
+from .store import Store, StoreError, settings
 from .parsers import parse_sleep_file, docter_sleep, docter_metrics, canonical_metrics
 from .platform import Platform
+from .staff_auth import staff_login
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -105,6 +106,39 @@ def create_app():
     @app.get("/health")
     def health():
         return jsonify(status="ok", version="2.0.0")
+
+    @app.post('/api/staff/login')
+    def management_login():
+        if request.headers.get('Origin') and request.headers['Origin'] != request.host_url.rstrip('/'):
+            return jsonify(error='請在原本的登入頁重試。'), 403
+        payload = request.get_json(silent=True)
+        if (not isinstance(payload, dict) or not isinstance(payload.get('account'), str)
+                or not isinstance(payload.get('password'), str) or len(payload['account']) > 64
+                or not 1 <= len(payload['password']) <= 256):
+            return jsonify(error='請輸入 DocterCloud 管理者帳號與密碼。'), 400
+        try:
+            return jsonify(staff_login(payload['account'], payload['password']))
+        except StoreError as error:
+            return jsonify(error='管理者登入未成功，請核對 DocterCloud 帳密、研究授權與連線。'), error.status
+        except Exception:
+            return jsonify(error='管理者登入服務暫時無法使用，請稍後重試。'), 503
+
+    @app.post('/api/participant/diary-access')
+    def participant_diary_access():
+        if request.headers.get('Origin') and request.headers['Origin'] != request.host_url.rstrip('/'):
+            return jsonify(error='請在原本的網頁重試。'), 403
+        payload = request.get_json(silent=True)
+        if (not isinstance(payload, dict) or not isinstance(payload.get('account'), str)
+                or not re.fullmatch(r'ycc000000(?:0[1-9]|[1-4][0-9]|50)', payload['account'])
+                or not isinstance(payload.get('password'), str) or not 1 <= len(payload['password']) <= 256):
+            return jsonify(error='請輸入研究帳號與密碼。'), 400
+        try:
+            from .participant_entry import diary_access
+            return jsonify(diary_access(payload['account'], payload['password']))
+        except StoreError as error:
+            return jsonify(error='研究帳號或密碼不正確，或日誌入口目前無法使用。'), error.status
+        except Exception:
+            return jsonify(error='日誌入口暫時無法取得，請稍後再試。'), 503
 
     @app.post("/api/import")
     @app.post("/api/sync")

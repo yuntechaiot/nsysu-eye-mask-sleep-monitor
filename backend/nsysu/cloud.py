@@ -20,6 +20,8 @@ def public_config(base):
     url, key = settings()
     from .reminder_routes import public_line_info
     return {'line': public_line_info(), 'supabase_url': url, 'publishable_key': key, 'timezone': 'Asia/Taipei',
+            'staff_auth_url': url + '/functions/v1/nsysu-staff-auth',
+            'participant_entry_url': url + '/functions/v1/nsysu-line/diary-access',
             'diary_url': base, 'dashboard_url': base + ('&' if '?' in base else '?') + 'view=dashboard'}
 
 
@@ -57,7 +59,7 @@ def diary_document(config, query=None):
     boot = json.dumps({'config': config, 'initial_query': urlencode(allowed)}, ensure_ascii=False)
     boot = boot.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
     scripts = ['<script>window.NSYSU_EMBED=' + boot + ';</script>']
-    for name in ['core.js', 'cloud-transport.js', 'qrcode.min.js', 'participants.js', 'invitations.js', 'management.js', 'history.js', 'diary.js', 'apple-motion.js', 'mobile-ui.js', 'workspace.js']:
+    for name in ['core.js', 'cloud-transport.js', 'qrcode.min.js', 'participants.js', 'invitations.js', 'management.js', 'history.js', 'diary.js', 'apple-motion.js', 'mobile-ui.js', 'workspace.js', 'participant-entry.js']:
         code = (ROOT / 'frontend/web' / name).read_text(encoding='utf-8')
         scripts.append('<script>' + code.replace('</script', '<\\/script') + '</script>')
     return html.replace('</body>', '\n'.join(scripts) + '</body>')

@@ -53,3 +53,13 @@ dialog,.modal{overscroll-behavior:contain;max-height:calc(100dvh - 2rem - env(sa
  .card-subtitle,.help,.info-box,.qr-card{font-size:.82rem}.stepper li,.account-chip{font-size:.76rem}
  .scale-label-l,.scale-label-r{font-size:.78rem}.review-list dt{font-size:.77rem}.site-footer{font-size:.72rem}.dialog-status{font-size:.85rem}.rec-grid{font-size:.84rem}
 }
+
+/* Personal diary entry: one column and readable inputs on every screen. */
+#self-qr-dialog{box-sizing:border-box;width:calc(100% - 2rem);max-width:32rem;max-height:calc(100dvh - 2rem);overflow-y:auto;overflow-x:hidden}
+#self-qr-dialog input{box-sizing:border-box;width:100%;min-width:0;font-size:1rem;min-height:3rem}
+#self-qr-result{display:grid;gap:1rem;min-width:0}
+#self-qr-result[hidden]{display:none}
+#self-qr-image{justify-self:center;width:16rem;max-width:100%;padding:.75rem;box-sizing:border-box;background:#fff}
+#self-qr-image canvas,#self-qr-image img{max-width:100%;height:auto!important}
+.self-qr-actions{display:flex;flex-wrap:wrap;gap:.75rem}
+.self-qr-actions .btn{flex:1;min-height:3rem}

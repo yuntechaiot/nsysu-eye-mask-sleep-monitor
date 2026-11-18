@@ -25,6 +25,10 @@ class DisabledPlatform:
 
 flow.Platform = DisabledPlatform
 flow.Store = AcceptanceStore
+def disabled_platform_session(token):
+    from nsysu.store import StoreError
+    raise StoreError(503)  # Explicit isolated provider, never a real DocterCloud login.
+flow.platform_session = disabled_platform_session
 flow.login = lambda account, password: AcceptanceStore().request('POST', '/auth/v1/token?grant_type=password',
                                                                {'email': diary_email(account), 'password': password})
 st.set_page_config(page_title='研究資料｜隔離驗收', layout='wide')

@@ -17,7 +17,11 @@ async function fixture(t){
  create function nsysu_private.check_diary_invitation(m text,t text) returns boolean language sql stable as $$
  select exists(select 1 from nsysu_private.diary_invitations i join vault.decrypted_secrets v on v.id=i.fixed_secret_id where i.member_id=m and i.revoked_at is null and v.decrypted_secret=t)$$;`);
  await db.exec(await fs.readFile(await migration,'utf8'));
- const store=new CloudStore({transaction:work=>db.transaction(work)});
+ // Match postgres.js typed JSONB serialization, including its treatment of strings.
+ const store=new CloudStore({transaction:work=>db.transaction(tx=>work({query:(sql,args=[])=>{
+  const jsonIndexes=sql.includes('insert into nsysu_line.events(')?[3]:sql.includes('insert into nsysu_line.outbox(')?[sql.includes("values($1,'diary'")?7:3]:[];
+  return tx.query(sql,args.map((value,index)=>jsonIndexes.includes(index)?JSON.stringify(value):value));
+ }}))});
  const salt='SYNTHETIC_SALT',hash='pbkdf2:sha256:600000$'+salt+'$'+pbkdf2Sync(password,salt,600000,32,'sha256').toString('hex');
  for(const [member,capability] of [['ycc00000001','a'.repeat(64)],['ycc00000050','b'.repeat(64)]]){
   const id=randomUUID();
@@ -266,4 +270,39 @@ test('expired or no-longer-allowed interrupted events retire without calling LIN
  f.line.linkToken=async()=>assert.fail('Expired event must not request a new LINE link');
  await f.gateway(await f.tickRequest());
  assert.equal((await f.records('events')).find(e=>e.event_id==='STALE_ENTRY').finished,true);
+});
+
+test('personal QR credentials return only the matching fixed diary capability without LINE binding or admin access',async t=>{
+ const f=await fixture(t);
+ await f.db.query('update nsysu_line.config set enabled=false,allowed_users=$1',[[]]);
+ const request=member=>new Request('https://cloud.example/diary-access',{method:'POST',headers:{Origin:'https://research.example.org'},body:JSON.stringify({account:member,password})});
+ const first=await f.gateway(request('ycc00000001')),last=await f.gateway(request('ycc00000050'));
+ assert.equal(first.status,200);assert.equal(first.headers.get('access-control-allow-origin'),'https://research.example.org');
+ const a=await first.json(),b=await last.json();
+ assert.equal(a.member_id,'ycc00000001');assert.equal(b.member_id,'ycc00000050');
+ const link=new URL(a.diary_url);assert.equal(link.searchParams.get('member'),a.member_id);assert.equal(link.searchParams.get('invite'),'a'.repeat(64));assert.equal(link.searchParams.has('date'),false);
+ assert.notEqual(a.diary_url,b.diary_url);assert.equal((await f.gateway(request('ycc00000001'))).status,200);
+ assert.equal((await f.records('bindings')).length,0);assert.equal((await f.records('outbox')).length,0);assert.equal(f.calls.length,0);
+ assert.equal(a.access_token,undefined);assert.equal(a.password_hash,undefined);
+});
+
+test('personal QR rejects bad passwords, inactive/revoked enrollment and foreign origins',async t=>{
+ const f=await fixture(t);
+ const request=(account='ycc00000001',candidate=password,origin='https://research.example.org')=>new Request('https://cloud.example/diary-access',{method:'POST',headers:{Origin:origin},body:JSON.stringify({account,password:candidate})});
+ assert.equal((await f.gateway(request('ycc00000001','wrong'))).status,401);
+ for(const invalid of ['yc00000001','ycc00000000','ycc00000051','YCC00000001'])assert.equal((await f.gateway(request(invalid))).status,401);
+ assert.equal((await f.gateway(request('ycc00000001',password,'https://foreign.invalid'))).status,403);
+ await f.db.query("update nsysu_private.diary_invitations set revoked_at=now() where member_id='ycc00000001'");
+ assert.equal((await f.gateway(request())).status,403);
+ await f.db.query("update nsysu_line.accounts set active=false where member='ycc00000050'");
+ assert.equal((await f.gateway(request('ycc00000050'))).status,401);
+});
+
+test('personal QR errors preserve allowed CORS and repeated password guessing is throttled',async t=>{
+ const f=await fixture(t);
+ const request=()=>new Request('https://cloud.example/diary-access',{method:'POST',headers:{Origin:'https://research.example.org'},body:JSON.stringify({account:'ycc00000001',password:'wrong'})});
+ for(let i=0;i<5;i++){const response=await f.gateway(request());assert.equal(response.status,401);assert.equal(response.headers.get('access-control-allow-origin'),'https://research.example.org');}
+ assert.equal((await f.gateway(request())).status,429);
+ const preflight=await f.gateway(new Request('https://cloud.example/diary-access',{method:'OPTIONS',headers:{Origin:'https://research.example.org'}}));
+ assert.equal(preflight.status,204);
 });

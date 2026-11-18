@@ -28,8 +28,8 @@ async function allRows(query){
 async function signIn(event){
   event?.preventDefault();const button=el('auth-submit');button.disabled=true;el('auth-status').textContent='正在登入…';
   try{
-    const r=await fetch(config.supabase_url+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:config.publishable_key,'Content-Type':'application/json'},body:JSON.stringify({email:VTCA.diaryEmail(val('auth-email')),password:val('auth-password')})});
-    if(!r.ok)throw Error('登入失敗，請檢查帳密');
+    const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:val('auth-email').trim(),password:val('auth-password')})});
+    if(!r.ok)throw Error(r.status===429?'嘗試次數較多，請 15 分鐘後再試。':'管理者登入未成功，請核對 DocterCloud 帳密、研究授權與連線。');
     const signed=await r.json();if(signed.user?.app_metadata?.diary_staff!==true)throw Error('此帳號沒有日誌管理權限');
     session=signed;authGeneration++;sessionStorage.setItem('vtca-session',JSON.stringify(session));notifyResearchSession();el('auth-password').value='';
     const action=postAuthAction;updateAccount();closeAuth();await loadParticipants();
@@ -47,6 +47,7 @@ async function signIn(event){
   }catch(e){el('auth-status').textContent=e.message;}finally{button.disabled=false;}
 }
 async function signOut(localOnly=false){
+  if(typeof closeParticipantQR==='function')closeParticipantQR();
   if(!localOnly)notifyResearchLogout();
   if(session&&!localOnly)void fetch(config.supabase_url+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:config.publishable_key,Authorization:'Bearer '+session.access_token}}).catch(()=>{});
   session=null;authGeneration++;sessionStorage.removeItem('vtca-session');sessionStorage.removeItem('nsysu-research-return-origin');records=[];exportData=[];allSummary={};editingId=null;

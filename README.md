@@ -1,10 +1,10 @@
 # nsysu-eye-mask-sleep-monitor · 深睡體驗營
 
-## LINE 雲端版待發布（2026-11-18）
+## 雲端 LINE 與帳號入口（2026-11-18）
 
 最新架構使用既有 Supabase 與 Streamlit 雲端：受試者從 LINE 選單綁定、隔日 09:00 開始收到個人日誌連結，未填每兩小時提醒，正式提交後停止當日提醒。真實 LINE 本機後端與 Windows Demo 工作已停用，正式運作不依賴使用者電腦；使用者另行手動啟動的隔離網頁驗收只模擬 LINE。
 
-雲端後端、私有資料表與排程已部署但維持停用，僅允許本人測試；網站綁定頁尚未發布，LINE Webhook 尚未切換。225 個 Python、55 個 JavaScript／隔離 PostgreSQL 測試，以及返回首頁／重新整理／續期／登出的四項本機瀏覽器檢查通過，手機雲端流程仍待發布後驗收。依使用者原始指示，尚未推送 GitHub；詳細狀態及發布步驟見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md)。
+LINE 已接通既有 Supabase 雲端，僅開放本人收件人；使用者已在手機完成雲端綁定，首次提醒為台灣 2026/11/19 09:00。本版另依使用者要求統一 DocterCloud 管理者登入、移除重複連線表單、提供首頁本人 QR Code 登入，並補上官方 LINE 入口。238 個 Python、77 個 JavaScript／隔離 PostgreSQL 測試、五種寬度 QR UI、build／lint／型別檢查通過。真正 DocterCloud 上游成功登入及首次排程送達仍須各自驗收；詳見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md) 與 [登入／本人 QR Code](docs/UNIFIED_LOGIN_AND_PERSONAL_QR.md)。
 
 ## 隔離本機網頁驗收
 

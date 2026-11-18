@@ -135,12 +135,9 @@ def main():
                 checks.append('Real Streamlit handoff reuses management session and renders eight research tabs')
                 assert dashboard.get_by_role('tab').count() == 8
                 dashboard.screenshot(path=OUT / 'after-dashboard-no-second-login-1440.png', full_page=True)
-                dashboard.get_by_text('重新連接 DocterCloud', exact=True).click()
-                dashboard.get_by_label('平台帳號', exact=True).fill('SYNTHETIC_PLATFORM')
-                dashboard.get_by_label('平台密碼', exact=True).fill('SYNTHETIC_PASSWORD')
-                dashboard.get_by_role('button', name='連接 DocterCloud', exact=True).click()
-                dashboard.get_by_text('登入未成功，請確認帳密、管理權限與連線。', exact=True).wait_for()
-                checks.append('Acceptance DocterCloud authorization is explicitly disabled and fails closed')
+                assert dashboard.get_by_label('平台帳號', exact=True).count() == 0
+                assert dashboard.get_by_text('重新連接 DocterCloud', exact=True).count() == 0
+                checks.append('Management has no second platform credential form; isolated data remains explicit')
                 dashboard.close()
                 page.bring_to_front()
                 for width in (320, 390, 430, 1440):
@@ -233,7 +230,7 @@ def main():
                     page.get_by_role('button', name='查看研究資料', exact=True).click()
                 dashboard = popup.value
                 dashboard.get_by_text('管理者已登入', exact=True).wait_for(timeout=25000)
-                dashboard.get_by_role('button', name='登出目前資料來源').click()
+                dashboard.get_by_role('button', name='登出管理者帳號').click()
                 dashboard.get_by_label('管理者帳號', exact=True).wait_for()
                 expect(page.locator('#account-chip')).to_have_text('')
                 expect(page.locator('#participant-link')).to_have_value('')

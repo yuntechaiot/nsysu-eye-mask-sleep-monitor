@@ -44,6 +44,16 @@
  }
  root.fetch=async function(input,options={}){
   if(input==='/api/config')return response(200,config);
+  if(input==='/api/staff/login'){
+   const expected=config.supabase_url+'/functions/v1/nsysu-staff-auth';
+   if(config.staff_auth_url!==expected)return response(503,{error:'管理者登入服務尚未完成設定。'});
+   return network(expected+'/login',{method:'POST',headers:{'Content-Type':'application/json'},body:options.body,redirect:'error'});
+  }
+  if(input==='/api/participant/diary-access'){
+   const expected=config.supabase_url+'/functions/v1/nsysu-line/diary-access';
+   if(config.participant_entry_url!==expected)return response(503,{error:'日誌入口服務尚未完成設定。'});
+   return network(expected,{method:'POST',headers:{'Content-Type':'application/json'},body:options.body,redirect:'error'});
+  }
   if(typeof input==='string'&&input.split('?')[0]==='/api/participants'){
    try{return await participants(options,new URL(input,'https://internal.invalid').searchParams.get('include_archived')==='1');}catch(error){return response(error.status||503,{error:error.status?error.message:'連線中斷，請重新整理清單後再重試'});}
   }

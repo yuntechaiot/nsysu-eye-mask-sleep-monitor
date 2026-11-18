@@ -1,6 +1,6 @@
 import {FlowError,buttons,cancelAction,digest,normalizeEvent,randomToken,validAccount,verifyPassword,verifySignature} from './protocol.mjs';
 
-const response=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+const jsonResponse=(value,status=200,origin=null)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...(origin?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
 async function parallel(items,work,width=4){
  let next=0;
  await Promise.all(Array.from({length:Math.min(width,items.length)},async()=>{while(next<items.length){const item=items[next++];await work(item);}}));
@@ -29,6 +29,7 @@ export class LineTransport {
 }
 
 export function createGateway({store,line,secret,bindingURL,waitUntil=promise=>promise.catch(()=>{})}){
+ const allowedOrigin=new URL(bindingURL).origin;
  async function finish(record){
   const result=record.result;
   let body=result.message,token;
@@ -51,8 +52,12 @@ export function createGateway({store,line,secret,bindingURL,waitUntil=promise=>p
   return results;
  }
  return async request=>{
+  const route=new URL(request.url).pathname.split('/').filter(Boolean).at(-1),origin=request.headers.get('origin');
+  const publicOrigin=route==='diary-access'&&origin===allowedOrigin?origin:null;
+  const response=(value,status=200)=>jsonResponse(value,status,publicOrigin);
   try{
-   const route=new URL(request.url).pathname.split('/').filter(Boolean).at(-1);
+   if(route==='diary-access'&&origin&&origin!==allowedOrigin)return response({error:'Invalid origin'},403);
+   if(route==='diary-access'&&request.method==='OPTIONS')return new Response(null,{status:204,headers:{...(publicOrigin?{'Access-Control-Allow-Origin':publicOrigin,'Access-Control-Allow-Headers':'content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'}:{})}});
    if(request.method==='GET'&&route==='health')return response({service:'nsysu-line-cloud',local_backend:false});
    if(request.method!=='POST')return response({error:'POST required'},405);
    if(Number(request.headers.get('content-length')||0)>65536)return response({error:'Request too large'},413);
@@ -88,6 +93,13 @@ export function createGateway({store,line,secret,bindingURL,waitUntil=promise=>p
     const url=new URL('https://access.line.me/dialog/bot/accountLink');
     url.searchParams.set('linkToken',input.link_token);url.searchParams.set('nonce',nonce);
     return response({status:'pending_line_confirmation',link_url:url.href});
+   }
+   if(route==='diary-access'){
+    const input=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(rawBytes));
+    if(!input||!validAccount(input.account))throw new FlowError('研究帳號或密碼不正確，請核對研究團隊配發的資料。',401);
+    const accountHash=await digest(input.account),registered=await store.qrCredentials(accountHash);
+    if(!registered||!await verifyPassword(input.password,registered.password_hash))throw new FlowError('研究帳號或密碼不正確，請核對研究團隊配發的資料。',401);
+    return response({status:'verified_research_account',...await store.qrLink(accountHash)});
    }
    return response({error:'Not found'},404);
   }catch(error){

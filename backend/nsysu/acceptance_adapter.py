@@ -7,7 +7,8 @@ from urllib.parse import urlsplit
 
 from flask import jsonify, request
 
-from .reminders import FlowError, TZ
+from .reminders import FlowError, TZ, digest, valid_account
+from werkzeug.security import check_password_hash
 
 
 class RecordingLine:
@@ -80,6 +81,23 @@ def attach(app, service, access_file):
                                simulated=True, line=access.get('line', {}))
             if path == '/acceptance/identity':
                 return jsonify(id_token=service.line.token)
+            if path == '/api/staff/login':
+                if not isinstance(payload, dict) or not isinstance(payload.get('account'), str) or payload.get('account', '').strip().upper() != access['admin_account'] or payload.get('password') != access['admin_password']:
+                    raise FlowError('管理者帳密不正確', 401)
+                return jsonify(saved_session())
+            if path == '/api/participant/diary-access':
+                if not isinstance(payload, dict) or not valid_account(payload.get('account')) or not isinstance(payload.get('password'), str):
+                    raise FlowError('研究帳號或密碼不正確', 401)
+                with service.state.connect() as db:
+                    account = db.execute('select * from accounts where account_hash=? and active=1', (digest(payload['account']),)).fetchone()
+                    if not account or not check_password_hash(account['password_hash'], payload['password']):
+                        raise FlowError('研究帳號或密碼不正確', 401)
+                    invite = db.execute('select invite from acceptance_invites where member=?', (account['member'],)).fetchone()
+                if not invite:
+                    raise FlowError('日誌入口未開放', 403)
+                from urllib.parse import urlencode
+                return jsonify(status='verified_research_account', member_id=account['member'],
+                               diary_url=service.base_url + '?' + urlencode({'member': account['member'], 'invite': invite['invite']}))
             if path == '/api/participants':
                 current = user(token) if token else None
                 with service.state.connect() as db:

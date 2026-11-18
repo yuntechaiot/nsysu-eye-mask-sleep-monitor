@@ -15,7 +15,8 @@ from .platform_data import combine_participants, load_platform_bundle, merge_rec
 from .platform_view import all_platform_view
 from .sleep import TZ, sleep_metrics
 from .sleep_parameters_view import sleep_parameters_view
-from .store import Store, StoreError, login
+from .store import Store, StoreError
+from .staff_auth import staff_login as login, platform_session
 from .config import setting
 
 PLATFORM = "手錶平台"
@@ -53,6 +54,7 @@ def research_store():
                 deny_research_access()
             raise
         st.session_state.supabase_session = saved
+        st.session_state.pop('platform_token', None)
     store = Store(saved['access_token'])
     try:
         store.user()
@@ -61,6 +63,14 @@ def research_store():
             deny_research_access()
         raise
     require_research_access(store)
+    if not st.session_state.get('platform_token'):
+        try:
+            st.session_state['platform_token'] = platform_session(saved['access_token'])
+            st.session_state.pop('platform_connection_error', None)
+        except StoreError as error:
+            if error.status in (401, 403):
+                deny_research_access()
+            st.session_state['platform_connection_error'] = 'DocterCloud 資料暫時無法讀取，請稍後重新整理。'
     return store
 
 
@@ -88,31 +98,27 @@ def connected(mode):
 
 
 def login_panel(mode):
-    platform = mode == PLATFORM
-    st.subheader("連接 DocterCloud" if platform else "管理者登入")
-    st.write("請輸入已授權的 DocterCloud 帳密，以查看即時平台資料。" if platform else "登入後可使用管理工作區、受試者日誌 QR Code 與已授權研究資料。")
-    with st.form("platform_login" if platform else "research_login"):
-        account = st.text_input("平台帳號" if platform else "管理者帳號")
-        password = st.text_input("平台密碼" if platform else "管理者密碼", type="password")
-        submitted = st.form_submit_button("連接 DocterCloud" if platform else "登入管理工作區", type="primary")
+    st.subheader("管理者登入")
+    st.write("使用 DocterCloud 研究管理者帳號登入，即可產生日誌 QR Code、查看日誌與手錶研究資料。")
+    with st.form("research_login"):
+        account = st.text_input("管理者帳號")
+        password = st.text_input("管理者密碼", type="password")
+        submitted = st.form_submit_button("登入管理工作區", type="primary")
     if submitted:
         if not account.strip() or not password:
             st.error("請填寫帳號與密碼。")
             return
         try:
             with st.spinner("正在確認登入…"):
-                if platform:
-                    st.session_state.platform_token = Platform().login(account, password)["access_token"]
-                else:
-                    st.session_state.supabase_session = login(account, password)
-                    st.session_state.pop('_auth_clear', None)
-                    research_store()
+                st.session_state.supabase_session = login(account, password)
+                st.session_state.pop('platform_token', None)
+                st.session_state.pop('_auth_clear', None)
+                research_store()
             clear_workspace()
             st.rerun()
         except Exception:
             st.error("登入未成功，請確認帳密、管理權限與連線。")
-    if not platform:
-        st.caption("DocterCloud 資料授權另行連接；管理者帳密不會傳送至手錶平台。")
+    st.caption("管理者帳號就是 DocterCloud 研究管理者帳號，不需要另外連接或重複輸入密碼。")
 
 
 def participants_for(mode, store):
@@ -344,26 +350,25 @@ def main(configure_page=True):
         home_link(diary_url())
     mode = st.sidebar.radio("我要查看", [RESEARCH, PLATFORM], index=0, key="flow_mode")
     workspace = st.sidebar.radio("功能", ["查看資料", "資料管理"], key="workspace_page")
-    if not connected(mode):
-        st.markdown("### 先連接你要查看的資料")
-        login_panel(mode)
+    if not connected(RESEARCH):
+        login_panel(RESEARCH)
         return
-    st.sidebar.success("手錶平台已連接" if mode == PLATFORM else "管理者已登入")
-    if st.sidebar.button("登出目前資料來源"):
-        if mode == PLATFORM:
-            st.session_state.pop("platform_token", None)
-        else:
-            st.session_state["_auth_clear"] = True
-            saved = st.session_state.pop("supabase_session")
-            st.session_state.pop('platform_token', None)
-            try:
-                Store(saved["access_token"]).request("POST", "/auth/v1/logout?scope=local")
-            except Exception:
-                pass
+    st.sidebar.success("管理者已登入")
+    if st.sidebar.button("登出管理者帳號"):
+        st.session_state["_auth_clear"] = True
+        saved = st.session_state.pop("supabase_session")
+        st.session_state.pop('platform_token', None)
+        try:
+            Store(saved["access_token"]).request("POST", "/auth/v1/logout?scope=local")
+        except Exception:
+            pass
         clear_workspace()
         st.rerun()
     try:
         store = research_store()
+        if mode == PLATFORM and not connected(PLATFORM):
+            st.error(st.session_state.get('platform_connection_error') or '手錶資料暫時無法讀取，請稍後重新整理。')
+            return
         participants = participants_for(mode, store)
     except PermissionError:
         st.rerun()
@@ -373,10 +378,6 @@ def main(configure_page=True):
     if not participants:
         st.info("目前帳號尚未取得受試者資料。請聯絡研究團隊確認授權。")
         return
-    if mode == RESEARCH and not connected(PLATFORM) and workspace == '查看資料':
-        st.info(st.session_state.get('platform_connection_error') or 'DocterCloud 尚未連線；既有日誌與研究資料仍可查看。')
-        with st.expander('重新連接 DocterCloud'):
-            login_panel(PLATFORM)
     choices = {member_key(row): row for row in participants}
     st.markdown("##### 選擇受試者與查詢日期")
     cols = st.columns([1.3, 1])

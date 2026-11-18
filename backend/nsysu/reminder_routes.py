@@ -45,7 +45,8 @@ def dispatch_interactions(flow, keys):
 
 
 def public_line_info():
-    account = setting('LINE_OFFICIAL_ACCOUNT_ID')
+    # Verified project official ID; public default also reaches existing cloud apps.
+    account = setting('LINE_OFFICIAL_ACCOUNT_ID') or '@823bciot'
     if not re.fullmatch(r'@[A-Za-z0-9._-]{2,64}', account):
         return {}
     return {'official_id': account, 'join_url': 'https://line.me/R/ti/p/' + quote(account, safe='')}

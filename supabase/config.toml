@@ -4,3 +4,8 @@ project_id = "nsysu-line-cloud"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/nsysu-line/index.ts"
+
+[functions.nsysu-staff-auth]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/nsysu-staff-auth/index.ts"

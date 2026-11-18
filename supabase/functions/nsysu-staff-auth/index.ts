@@ -1,0 +1,11 @@
+import postgres from 'npm:postgres@3.4.7';
+import {AuthBroker,createStaffGateway,DocterIdentity,tokenCipher} from './gateway.mjs';
+import {StaffStore} from './store.mjs';
+type Query={query(text:string,params?:postgres.ParameterOrJSON<never>[]):Promise<{rows:postgres.Row[]}>};
+type Work=(query:Query)=>Promise<unknown>;
+const url=Deno.env.get('SUPABASE_URL'),key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const databaseURL=Deno.env.get('SUPABASE_DB_URL'),encryption=Deno.env.get('NSYSU_STAFF_TOKEN_KEY');
+if(!url||!key||!databaseURL||!encryption)throw new Error('Private staff settings required');
+const connection=postgres(databaseURL,{max:3,prepare:false,idle_timeout:10,connect_timeout:10,ssl:'require'});
+const database={transaction:(work:Work)=>connection.begin(sql=>work({query:async(text,params=[])=>({rows:Array.from(await sql.unsafe(text,params))})}))};
+Deno.serve(createStaffGateway({store:new StaffStore(database),auth:new AuthBroker(url,key),docter:new DocterIdentity(),cipher:tokenCipher(encryption),allowedOrigin:'https://nsysu-eye-mask-sleep-monitor.streamlit.app'}));

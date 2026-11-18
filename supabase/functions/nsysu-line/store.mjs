@@ -1,6 +1,12 @@
 import {FlowError,addMinutes,buttons,cancelAction,dayOf,diaryURL,digest,instant,nextDay,randomToken} from './protocol.mjs';
 
-const rows=async(tx,text,params=[])=> (await tx.query(text,params)).rows;
+const decoded=value=>{for(let count=0;count<2&&typeof value==='string';count++)value=JSON.parse(value);return value;};
+const rows=async(tx,text,params=[])=> (await tx.query(text,params)).rows.map(row=>{
+ if(row.result!==undefined)row.result=decoded(row.result);
+ if(row.payload!==undefined)row.payload=decoded(row.payload);
+ if(row.snapshot!==undefined)row.snapshot=decoded(row.snapshot);
+ return row;
+});
 const one=async(tx,text,params=[])=> (await rows(tx,text,params))[0];
 const json=value=>JSON.stringify(value);
 const dateText=value=>value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
@@ -52,6 +58,20 @@ export class CloudStore {
   await this.limit(['line:'+await digest(request.line_user),'account:'+accountHash],5);
   return this.transaction(tx=>one(tx,'select password_hash from nsysu_line.accounts where account_hash=$1 and active',[accountHash]));
  }
+ async qrCredentials(accountHash){
+  await this.limit(['qr-global'],300);await this.limit(['qr-account:'+accountHash],5);
+  return this.transaction(tx=>one(tx,'select password_hash from nsysu_line.accounts where account_hash=$1 and active',[accountHash]));
+ }
+ async qrLink(accountHash){
+  return this.transaction(async tx=>{
+   const day=dayOf(await time(tx)),cfg=await this.config(tx);
+   const account=await one(tx,'select member from nsysu_line.accounts where account_hash=$1 and active',[accountHash]);
+   if(!account)throw new FlowError('研究帳號目前無法取得日誌入口，請聯絡研究團隊。',403);
+   const snapshot=(await one(tx,'select nsysu_line.diary_snapshot($1,$2::date) as snapshot',[account.member,day])).snapshot;
+   if(!snapshot?.active||!snapshot.invite)throw new FlowError('日誌入口目前未開放或已停用，請聯絡研究團隊。',403);
+   return {member_id:account.member,diary_url:diaryURL(cfg.diary_url,account.member,snapshot.invite)};
+  });
+ }
  async prepareProof(tokenHash,accountHash,nonceHash){
   return this.transaction(async tx=>{
    const now=await time(tx);
@@ -83,7 +103,7 @@ export class CloudStore {
     result=await this.mutateEvent(tx,event,now);
    }
    const saved=await one(tx,`insert into nsysu_line.events(event_id,line_user,lease_until,result,due_at,finished)
-    values($1,$2,$3,$4,$5,$6) returning *`,[event.id,event.identity,addMinutes(now,1),json(result),now,result.kind==='none']);
+    values($1,$2,$3,$4,$5,$6) returning *`,[event.id,event.identity,addMinutes(now,1),result,now,result.kind==='none']);
    return saved.finished?null:saved;
   });
  }
@@ -171,7 +191,7 @@ export class CloudStore {
    }
    if(linkToken)await tx.query('insert into nsysu_line.link_requests values($1,$2,$3)',[await digest(linkToken),record.line_user,addMinutes(now,10)]);
    const key='interaction:'+record.event_id;
-   await tx.query('insert into nsysu_line.outbox(job_key,kind,line_user,due_at,payload) values($1,\'interaction\',$2,$3,$4) on conflict(job_key) do nothing',[key,record.line_user,current.due_at,json({to:record.line_user,messages:[body]})]);
+   await tx.query('insert into nsysu_line.outbox(job_key,kind,line_user,due_at,payload) values($1,\'interaction\',$2,$3,$4) on conflict(job_key) do nothing',[key,record.line_user,current.due_at,{to:record.line_user,messages:[body]}]);
    await tx.query('update nsysu_line.events set finished=true where event_id=$1',[record.event_id]);
    return key;
   });
@@ -204,7 +224,7 @@ export class CloudStore {
      const payload={to:id,messages:[buttons('請完成本次睡眠日誌。填寫完成後，今天將不再提醒。',[
       {type:'uri',label:'填寫睡眠日誌',uri:diaryURL(cfg.diary_url,account.member,snapshot.invite,day)}])]};
      await tx.query(`insert into nsysu_line.outbox(job_key,kind,line_user,study,member,target_date,slot,due_at,payload)
-      values($1,'diary',$2,$3,$4,$5,$6,$7,$8) on conflict do nothing`,[key,id,account.study,account.member,day,slot,due,json(payload)]);
+      values($1,'diary',$2,$3,$4,$5,$6,$7,$8) on conflict do nothing`,[key,id,account.study,account.member,day,slot,due,payload]);
     }
    }
   });
