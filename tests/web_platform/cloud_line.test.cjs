@@ -46,6 +46,7 @@ async function fixture(t){
   const event={type:'postback',webhookEventId:options.id||randomUUID(),timestamp:options.stamp??new Date(clock).getTime(),source:{type:'user',userId:options.identity||identity},postback:{data:'binding:'+action}};
   if(action==='linked'||action==='link_failed'){event.type='accountLink';event.link={result:action==='linked'?'ok':'failed',nonce:options.nonce};delete event.postback;}
   if(action==='unfollow'){event.type='unfollow';delete event.postback;}
+  if(action==='follow'){event.type='follow';delete event.postback;}
   const raw=JSON.stringify({events:[event]});
   const request=new Request('https://cloud.example.org/webhook',{method:'POST',headers:{'x-line-signature':options.signature||createHmac('sha256',secret).update(raw).digest('base64')},body:raw});
   const response=await gateway(request);
@@ -91,6 +92,40 @@ test('signed menu replies without timer; duplicate, forged and other-recipient e
  assert.equal((await f.send('cancel',{signature:'bad'})).status,401);
  await f.send('start',{identity:'SYNTHETIC_NOT_ALLOWED'});assert.equal(f.calls.length,1);
  assert.equal((await f.records('outbox'))[0].attempts,1);
+});
+
+test('verified active friend events synchronize the shared menu; forged, excluded and unfollow events do not',async t=>{
+ const f=await fixture(t),synced=[];
+ f.line.syncRichMenu=async who=>{synced.push(who);return true;};
+ await f.send('follow');assert.deepEqual(synced,[identity]);
+ await f.send('start',{identity:'SYNTHETIC_LINE_B'});assert.deepEqual(synced,[identity,'SYNTHETIC_LINE_B']);
+ await f.send('start',{signature:'bad'});await f.send('start',{identity:'SYNTHETIC_NOT_ALLOWED'});await f.send('unfollow');
+ assert.equal(synced.length,2);
+});
+
+test('menu synchronization failure does not block binding replies or the personal diary test',async t=>{
+ const f=await fixture(t);
+ f.line.syncRichMenu=async()=>{throw Error('SYNTHETIC_MENU_UNAVAILABLE');};
+ await f.bind();assert.equal((await f.records('bindings')).length,1);
+ const job=(await f.records('outbox')).find(item=>item.slot?.startsWith('binding-test:'));
+ assert.equal(job.status,'accepted');assert.equal(job.attempts,1);
+});
+
+test('LINE menu transport uses the current default and only pinned authenticated API paths',async()=>{
+ const [,,{LineTransport}]=await modules,requests=[],menu='richmenu-'+'a'.repeat(32);
+ const line=new LineTransport('SYNTHETIC_TOKEN',async(url,options)=>{
+  requests.push({url,options});return new Response(JSON.stringify(requests.length===1?{richMenuId:menu}:{}));
+ });
+ assert.equal(await line.syncRichMenu('SYNTHETIC_LINE_A'),true);
+ assert.equal(requests[0].url,'https://api.line.me/v2/bot/user/all/richmenu');assert.equal(requests[0].options.method,'GET');
+ assert.equal(requests[1].url,'https://api.line.me/v2/bot/user/SYNTHETIC_LINE_A/richmenu/'+menu);
+ assert.equal(requests[1].options.method,'POST');
+ assert.ok(requests.every(request=>request.options.headers.Authorization==='Bearer SYNTHETIC_TOKEN'&&request.options.redirect==='error'));
+ const invalid=[];
+ const malformed=new LineTransport('SYNTHETIC_TOKEN',async url=>{invalid.push(url);return new Response(JSON.stringify({richMenuId:'https://foreign.invalid/menu'}));});
+ assert.equal(await malformed.syncRichMenu(identity),false);assert.equal(invalid.length,1);
+ const absent=new LineTransport('SYNTHETIC_TOKEN',async()=>new Response('{}',{status:404}));
+ assert.equal(await absent.syncRichMenu(identity),false);
 });
 
 test('official account link is pending until verified callback; nonce owner, replay and original dates',async t=>{

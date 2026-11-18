@@ -1,7 +1,7 @@
 """Publish the shared cloud binding menu; preview by default, no backend startup.
 
-Only the known legacy Demo owner's personal override is removed. Existing menu
-objects and a private checkpoint are retained for --restore CHECKPOINT.
+Only the known owner's legacy/current-default override is removed. Existing
+menu objects and a private checkpoint are retained for --restore CHECKPOINT.
 """
 import argparse
 from datetime import datetime
@@ -65,11 +65,13 @@ def publish(directory, image, restore=None):
     owner = read_json(ROOT / 'private/live-demo/config.json')['allowed_line_user']
     user_path = 'user/' + owner + '/richmenu'
     previous_owner = api('GET', user_path, missing=True)
+    previous_default = api('GET', 'user/all/richmenu', missing=True)
     known = read_json(ROOT / 'private/live-demo/menu-current.json')['rich_menu_id']
-    if previous_owner and previous_owner.get('richMenuId') != known:
-        raise RuntimeError('Owner personal menu is not the known legacy Demo menu')
+    managed = {known, previous_default.get('richMenuId') if previous_default else None}
+    if previous_owner and previous_owner.get('richMenuId') not in managed:
+        raise RuntimeError('Owner personal menu is not a known managed menu')
     saved = {'official_account': '@823bciot', 'legacy_owner': owner,
-             'previous_default_menu': api('GET', 'user/all/richmenu', missing=True),
+             'previous_default_menu': previous_default,
              'previous_owner_menu': previous_owner, 'created_menu': None}
     checkpoint = directory / 'backups' / ('default-menu-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8] + '.json')
     checkpoint.parent.mkdir(parents=True, exist_ok=True)

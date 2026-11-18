@@ -17,6 +17,18 @@ export class LineTransport {
   if(typeof data.linkToken!=='string'||!data.linkToken||data.linkToken.length>1000)throw new Error('Invalid LINE link');
   return data.linkToken;
  }
+ async syncRichMenu(identity){
+  try{
+   const options={headers:{Authorization:'Bearer '+this.token},signal:AbortSignal.timeout(10000),redirect:'error'};
+   const response=await this.request('https://api.line.me/v2/bot/user/all/richmenu',{...options,method:'GET'});
+   if(!response.ok)return false;
+   const menu=(await response.json()).richMenuId;
+   if(typeof menu!=='string'||!/^richmenu-[a-f0-9]{32}$/.test(menu))return false;
+   const linked=await this.request('https://api.line.me/v2/bot/user/'+encodeURIComponent(identity)+'/richmenu/'+menu,
+    {...options,method:'POST',signal:AbortSignal.timeout(10000)});
+   return linked.ok;
+  }catch{return false;}
+ }
  async push(payload,retry){
   try{
    const result=await this.call('message/push',payload,{'X-Line-Retry-Key':retry});
@@ -73,7 +85,11 @@ export function createGateway({store,line,secret,bindingURL,waitUntil=promise=>p
      const event=normalizeEvent(value);
      if(!event)continue;
      const record=await store.applyEvent(event);
-     if(record){processed++;waitUntil(finish(record).catch(()=>{/* durable event/outbox recovers via Cron */}));}
+     if(record){
+      processed++;waitUntil(finish(record).catch(()=>{/* durable event/outbox recovers via Cron */}));
+      // Per-user association takes effect immediately; message delivery stays independent.
+      if(typeof line.syncRichMenu==='function')waitUntil(line.syncRichMenu(record.line_user).catch(()=>{}));
+     }
     }
     return response({processed});
    }
