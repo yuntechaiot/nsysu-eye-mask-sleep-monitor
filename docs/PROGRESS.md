@@ -2,7 +2,7 @@
 
 2026-11-18 雲端實測與入口更新：使用者已自行推送 `07344b5`，正式 `active_staff_session` 也已套用。既有雲端 `?view=line` 已實際顯示新表單，LINE Webhook 改至 Supabase 並通過 LINE 官方 API Verify，啟用僅本人 allowlist 與專用 Cron。本機真實 LINE 工作仍 Disabled、`demo_send_enabled=false`。修正 postgres.js 的 JSONB 重複序列化與讀取字串差異，恢復先前真實操作；本人回報收到並完成綁定，雲端核對 `ycc00000050`，真實綁定時間為台灣 11/18 10:14，首次提醒 11/19 09:00，capability 有效且當日尚未提交。未改日期、未匯入本機假日誌、未開放其他好友。
 
-最新新增：DocterCloud 管理者是網站唯一密碼驗證來源，移除第二套連線表單；私有雲端保存加密平台 token，內部 RLS session 沿用既有三名管理者。首頁 QR 改用有效研究帳密直接取得登入帳號對應的固定 QR／連結，沒有管理權限或 LINE 綁定副作用；公開官方 LINE 缺設定時使用已核實的 @823bciot。238 Python、77 Node／隔離 PG、五種寬度 UI、Deno check、build／lint／Ruff／mypy 通過；雲端 API 已實測本人固定日誌入口。上游 DocterCloud 成功仍待使用者用真實管理者帳密驗收。詳見 [登入與 QR 設計](UNIFIED_LOGIN_AND_PERSONAL_QR.md)。下方為歷次驗收紀錄。
+最新新增：DocterCloud 管理者是網站唯一密碼驗證來源，移除第二套連線表單；私有雲端保存加密平台 token，內部 RLS session 沿用既有三名管理者。首頁 QR 改用有效研究帳密直接取得登入帳號對應的固定 QR／連結，沒有管理權限或 LINE 綁定副作用；公開官方 LINE 缺設定時使用已核實的 @823bciot。238 Python、79 Node／隔離 PG、五種寬度 UI、雲端 inline 啟動與三層 iframe 交接、Deno check、build／lint／Ruff／mypy 通過；雲端 API 已實測本人固定日誌入口。上游 DocterCloud 成功仍待使用者用真實管理者帳密驗收。詳見 [登入與 QR 設計](UNIFIED_LOGIN_AND_PERSONAL_QR.md)。下方為歷次驗收紀錄。
 
 2026-11-18 返回首頁登入接續修正：研究頁原使用的 `st.link_button` 開啟無 opener 的新分頁，首頁的分頁儲存空間因此沒有登入資料。已改為專用返回元件及受控 postMessage 交接，核對來源 origin、實際開啟的視窗與一次性 nonce；網址只帶非秘密的 `auth_return=1`，不包含憑證，也不改成永久 localStorage。重新整理後會依非秘密的來源標記重建可信交接連線，讓續期／主動登出持續同步，授權仍由原後端檢查。225 個 Python、55 個 Node／隔離 PG 測試、build／lint／Ruff／mypy 通過。使用者手動重啟後，四項真實 Edge 瀏覽器檢查通過：首頁登入→研究→返回→重新整理；模擬憑證到期後自動續期、研究資料可讀且再次返回取得新憑證；主動登出清除相關頁面；直接登入研究頁後返回首頁。證據在 `artifacts/return-session/checks.json` 與截圖；測試連線僅 localhost，不改日誌、時鐘或正式資料。沒有推送、部署或啟用真實 LINE。本機登入 access token 為一小時；操作時提前 30 秒檢查並續期，未設定閒置或固定最長登入時間。
 

@@ -4,13 +4,13 @@
 
 最新架構使用既有 Supabase 與 Streamlit 雲端：受試者從 LINE 選單綁定、隔日 09:00 開始收到個人日誌連結，未填每兩小時提醒，正式提交後停止當日提醒。真實 LINE 本機後端與 Windows Demo 工作已停用，正式運作不依賴使用者電腦；使用者另行手動啟動的隔離網頁驗收只模擬 LINE。
 
-LINE 已接通既有 Supabase 雲端，僅開放本人收件人；使用者已在手機完成雲端綁定，首次提醒為台灣 2026/11/19 09:00。本版另依使用者要求統一 DocterCloud 管理者登入、移除重複連線表單、提供首頁本人 QR Code 登入，並補上官方 LINE 入口。238 個 Python、77 個 JavaScript／隔離 PostgreSQL 測試、五種寬度 QR UI、build／lint／型別檢查通過。真正 DocterCloud 上游成功登入及首次排程送達仍須各自驗收；詳見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md) 與 [登入／本人 QR Code](docs/UNIFIED_LOGIN_AND_PERSONAL_QR.md)。
+LINE 已接通既有 Supabase 雲端，僅開放本人收件人；使用者已在手機完成雲端綁定，首次提醒為台灣 2026/11/19 09:00。本版另依使用者要求統一 DocterCloud 管理者登入、移除重複連線表單、提供首頁本人 QR Code 登入，並補上官方 LINE 入口。238 個 Python、79 個 JavaScript／隔離 PostgreSQL 測試、五種寬度 QR UI、build／lint／型別檢查通過。真正 DocterCloud 上游成功登入及首次排程送達仍須各自驗收；詳見 [雲端實作文件](docs/CLOUD_LINE_IMPLEMENTATION.md) 與 [登入／本人 QR Code](docs/UNIFIED_LOGIN_AND_PERSONAL_QR.md)。
 
 ## 隔離本機網頁驗收
 
 本輪從 GitHub `origin/main` 的 `7e2deb8897a29e3cdd677b19ba41b88dbe704022` 建立獨立 worktree，完整保留原工作目錄。使用者已手動開啟隔離本機驗收工具，可查看測試登入資料、模擬 follow、設定台灣時鐘與執行提醒，不發送真實 LINE；此工具不是雲端版的執行依賴。
 
-管理者登入一次後，工作區提供「產生受試者日誌 QR Code」與「查看研究資料」；即時 DocterCloud 另行授權。一般頁面只保留真實官方 LINE ID 與加入連結。技術設定在 [LINE 設定文件](docs/LINE_SETUP.md)，驗收與限制見 [本輪交付報告](docs/ACCEPTANCE_REPORT.md)，審查與修正見 [EGM 審查報告](docs/goldfish_review_report.md)，進度見 [PROGRESS](docs/PROGRESS.md)。
+管理者以已授權的 DocterCloud 帳密登入一次後，工作區提供「產生受試者日誌 QR Code」與「查看研究資料」，直接接續同一次平台授權。一般頁面只保留真實官方 LINE ID 與加入連結。技術設定在 [LINE 設定文件](docs/LINE_SETUP.md)，驗收與限制見 [本輪交付報告](docs/ACCEPTANCE_REPORT.md)，審查與修正見 [EGM 審查報告](docs/goldfish_review_report.md)，進度見 [PROGRESS](docs/PROGRESS.md)。
 
 
 獨立的 Apple 風格、手機優先版本。原始專案 `../NSYSU` 與原網站 https://eye-mask-sleep-monitor.streamlit.app/ 不受此版本部署影響。

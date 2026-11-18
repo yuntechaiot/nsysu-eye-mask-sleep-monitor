@@ -1,7 +1,8 @@
 <!doctype html><html lang="zh-Hant"><meta charset="utf-8"><title>確認管理者登入</title><p role="status">正在確認管理者登入…</p><script>
 'use strict';
 const key='vtca-session';let hydrated=false,initialized=false,peerOrigin=null,nonce=null,lastClear=false;
-const peer=parent.opener;
+function openerWindow(){let frame=parent;for(let depth=0;frame&&depth<8;depth++){try{if(frame.opener)return frame.opener;const next=frame.parent;if(!next||next===frame)break;frame=next;}catch{return null;}}return null;}
+const peer=openerWindow();
 function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},location.origin);}
 function result(value){document.querySelector('[role="status"]').textContent='';send('streamlit:setFrameHeight',{height:0});send('streamlit:setComponentValue',{value,dataType:'json'});}
 function askPeer(){if(!peer||!peerOrigin||lastClear)return;nonce=crypto.randomUUID();peer.postMessage({type:'nsysu:session-request',nonce},peerOrigin);}

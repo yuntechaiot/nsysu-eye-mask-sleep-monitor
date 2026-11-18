@@ -59,7 +59,7 @@ def diary_document(config, query=None):
     boot = json.dumps({'config': config, 'initial_query': urlencode(allowed)}, ensure_ascii=False)
     boot = boot.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
     scripts = ['<script>window.NSYSU_EMBED=' + boot + ';</script>']
-    for name in ['core.js', 'cloud-transport.js', 'qrcode.min.js', 'participants.js', 'invitations.js', 'management.js', 'history.js', 'diary.js', 'apple-motion.js', 'mobile-ui.js', 'workspace.js', 'participant-entry.js']:
+    for name in ['core.js', 'cloud-transport.js', 'qrcode.min.js', 'participants.js', 'invitations.js', 'management.js', 'history.js', 'diary.js', 'apple-motion.js', 'mobile-ui.js', 'workspace.js', 'participant-entry.js', 'bootstrap.js']:
         code = (ROOT / 'frontend/web' / name).read_text(encoding='utf-8')
         scripts.append('<script>' + code.replace('</script', '<\\/script') + '</script>')
     return html.replace('</body>', '\n'.join(scripts) + '</body>')

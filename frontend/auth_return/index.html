@@ -3,6 +3,7 @@
 <a id="home" href="#">← 回到日誌首頁</a><script>
 'use strict';
 const key='vtca-session',opened=new Set(),clients=new Set();let diaryURL=null;
+function containsWindow(root,source){for(let depth=0;source&&depth<8;depth++){if(root===source)return true;try{const next=source.parent;if(!next||next===source)break;source=next;}catch{return false;}}return false;}
 function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},location.origin);}
 function saved(){try{return JSON.parse(sessionStorage.getItem(key)||'null');}catch{return null;}}
 function publish(){const session=saved();for(const client of clients)try{client.postMessage({type:session?'nsysu:session-update':'nsysu:logout',session},diaryURL.origin);}catch{clients.delete(client);}}
@@ -15,7 +16,7 @@ addEventListener('message',event=>{
   try{const url=new URL(event.data.args.diary_url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error();url.searchParams.set('auth_return','1');diaryURL=url;document.getElementById('home').href=url.href;}catch{diaryURL=null;}
   return;
  }
- if(!diaryURL||event.origin!==diaryURL.origin||![...opened].some(child=>child===event.source||child===event.source?.parent))return;
+ if(!diaryURL||event.origin!==diaryURL.origin||![...opened].some(child=>containsWindow(child,event.source)))return;
  if(event.data?.type==='nsysu:return-session-request'&&typeof event.data.nonce==='string'&&event.data.nonce.length>0&&event.data.nonce.length<=128){
   clients.add(event.source);event.source.postMessage({type:'nsysu:return-session',nonce:event.data.nonce,session:saved()},diaryURL.origin);
  }

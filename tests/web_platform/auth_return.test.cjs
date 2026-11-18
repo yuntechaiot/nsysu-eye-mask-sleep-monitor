@@ -12,11 +12,12 @@ function events(){const listeners=new Map();return {
  dispatch(type,event){for(const fn of [...listeners.get(type)||[]])fn(event);}
 };}
 function storage(){const values=new Map();return {values,getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};}
-function fixture({embedded=false,defer=false,empty=false}={}){
+function fixture({embedded=false,defer=false,empty=false,cloudDepth=1}={}){
  const homeEvents=events(),researchEvents=events(),homeStorage=storage(),researchStorage=storage();
  const nodes=new Map(),timers=[],requests=[],responses=[],streamlit=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',hidden:false,href:'',addEventListener(type,fn){this[type]=fn;},replaceChildren(){},removeAttribute(){},classList:{add(){},remove(){},contains(){return false;}}});return nodes.get(id);};
- const researchRoot={},homeRoot={},homeSource=embedded?{parent:homeRoot}:homeRoot;
+ const researchRoot={},homeRoot={};let homeSource=homeRoot;
+ if(embedded)for(let depth=0;depth<cloudDepth;depth++)homeSource={parent:homeSource};
  const peer={parent:researchRoot,postMessage(message,origin){requests.push({message,origin});if(!defer)queueMicrotask(()=>researchEvents.dispatch('message',{source:homeSource,origin:homeOrigin,data:message}));}};
  homeSource.postMessage=(message,origin)=>{responses.push({message,origin});queueMicrotask(()=>homeEvents.dispatch('message',{source:peer,origin:researchOrigin,data:message}));};
  const researchParent={postMessage(message){streamlit.push(message);}};
@@ -32,6 +33,7 @@ function fixture({embedded=false,defer=false,empty=false}={}){
   fetch:async()=>({ok:true,json:async()=>credentials('REFRESHED')}),VTCA:{esc:String},invitationCache:new Map(),fixedInvitationLoads:new Map(),directoryLoaded:false,
   clearParticipantNames(){},clearHistoryDirectory(){},closeManagementDialog(){}});
  context.window=context;context.parent=embedded?{opener:peer}:context;context.opener=embedded?null:peer;
+ if(embedded)for(let depth=1;depth<cloudDepth;depth++)context.parent={parent:context.parent};
  vm.runInContext(fs.readFileSync('frontend/web/diary.js','utf8').replace(/\ninit\(\);\s*$/,''),context);
  vm.runInContext(fs.readFileSync('frontend/web/workspace.js','utf8'),context);
  vm.runInContext(`config={dashboard_url:'${researchOrigin}/',supabase_url:'${homeOrigin}/acceptance/supabase',publishable_key:'sb_publishable_SYNTHETIC'};updateAccount=()=>{};cancelEdit=()=>{};`,context);
@@ -55,6 +57,14 @@ test('cloud embedded diary obtains the latest rotated session rather than a stal
  vm.runInContext(`session=${JSON.stringify(credentials('OLD'))}`,f.context);
  f.click();await f.restore();
  assert.equal(f.session().access_token,credentials().access_token);
+});
+
+test('hosted cloud wrapper with multiple frame levels preserves return and subsequent refresh',async()=>{
+ const f=fixture({embedded:true,cloudDepth:3});f.click();await f.restore();
+ assert.equal(f.session().access_token,credentials().access_token);
+ await vm.runInContext('session.expires_at=0;authHeaders()',f.context);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(JSON.parse(f.researchStorage.getItem('vtca-session')).access_token,credentials('REFRESHED').access_token);
 });
 
 test('return page reload reconnects the trusted research peer after the URL marker has been removed',async()=>{

@@ -1,6 +1,7 @@
 """Responsive personal-QR UI against an existing loopback preview; synthetic responses only."""
 import json
 from pathlib import Path
+import sys
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -26,6 +27,21 @@ def main():
 
         context.route('**/api/participant/diary-access', mock)
         try:
+            # Use the actual inline cloud document: config resolves without a network
+            # round trip, so this catches feature/startup ordering races.
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
+            from nsysu.cloud import diary_document
+            document = diary_document({'supabase_url': 'https://synthetic.supabase.co',
+                                       'publishable_key': 'sb_publishable_SYNTHETIC',
+                                       'diary_url': BASE, 'dashboard_url': BASE + '?view=dashboard',
+                                       'line': {'official_id': '@823bciot', 'join_url': 'https://line.me/R/ti/p/%40823bciot'}})
+            context.route(BASE + 'acceptance/cloud-bootstrap', lambda route: route.fulfill(content_type='text/html', body=document))
+            inline = context.new_page()
+            inline.goto(BASE + 'acceptance/cloud-bootstrap')
+            expect(inline.locator('#line-notice')).to_be_visible()
+            expect(inline.locator('#loading-screen')).to_be_hidden()
+            assert not inline.locator('#toast').evaluate("node=>node.classList.contains('error')")
+            inline.close()
             for width in [375, 414, 768, 1024, 1440]:
                 page = context.new_page()
                 page.set_viewport_size({'width': width, 'height': 900})
@@ -49,8 +65,8 @@ def main():
         finally:
             context.close()
             browser.close()
-    (OUT / 'checks.json').write_text(json.dumps({'synthetic_response': True, 'checks': checks}, indent=2), encoding='utf-8')
-    print(json.dumps({'responsive_checks': len(checks), 'passed': True, 'synthetic_response': True}))
+    (OUT / 'checks.json').write_text(json.dumps({'synthetic_response': True, 'cloud_inline_bootstrap': True, 'checks': checks}, indent=2), encoding='utf-8')
+    print(json.dumps({'responsive_checks': len(checks), 'cloud_inline_bootstrap': True, 'passed': True, 'synthetic_response': True}))
 
 
 if __name__ == '__main__':

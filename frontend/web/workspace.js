@@ -1,5 +1,7 @@
 'use strict';
 const dashboardPeers=new Set(),dashboardFrames=new Set();
+function researchOpener(){let frame=window;for(let depth=0;depth<8;depth++){try{if(frame.opener)return frame.opener;const next=frame.parent;if(!next||next===frame)break;frame=next;}catch{return null;}}return null;}
+function researchWindowContains(root,source){for(let depth=0;source&&depth<8;depth++){if(source===root)return true;try{const next=source.parent;if(!next||next===source)break;source=next;}catch{return false;}}return false;}
 function notifyResearchLogout(){if(config?.dashboard_url)for(const frame of dashboardFrames)frame.postMessage({type:'nsysu:logout'},new URL(config.dashboard_url,location.href).origin);}
 function notifyResearchSession(){if(session&&config?.dashboard_url)for(const frame of dashboardFrames)frame.postMessage({type:'nsysu:session-update',session},new URL(config.dashboard_url,location.href).origin);}
 async function restoreResearchSession(){
@@ -7,7 +9,7 @@ async function restoreResearchSession(){
  if(!config?.dashboard_url)return;
  const origin=new URL(config.dashboard_url,location.href).origin;
  if(new URLSearchParams(query).get('auth_return')!=='1'&&sessionStorage.getItem('nsysu-research-return-origin')!==origin)return;
- let peer;try{peer=window.opener||window.parent.opener;}catch{return;}
+ const peer=researchOpener();
  if(!peer)return;
  const nonce=crypto.randomUUID(),generation=authGeneration;
  await new Promise(resolve=>{
@@ -49,7 +51,7 @@ async function openResearch(event){
  const peer=window.open(url.href,'nsysu-research');if(peer)dashboardPeers.add(peer);else showToast('請允許此網站開啟研究資料分頁。','error');
 }
 addEventListener('message',event=>{
- if(!config?.dashboard_url||event.origin!==new URL(config.dashboard_url,location.href).origin||![...dashboardPeers].some(peer=>peer===event.source||peer===event.source?.parent))return;
+ if(!config?.dashboard_url||event.origin!==new URL(config.dashboard_url,location.href).origin||![...dashboardPeers].some(peer=>researchWindowContains(peer,event.source)))return;
  if(event.data?.type==='nsysu:session-request'&&typeof event.data.nonce==='string'){dashboardFrames.add(event.source);event.source.postMessage({type:'nsysu:session',nonce:event.data.nonce,session},event.origin);}
  if(event.data?.type==='nsysu:logout')void signOut(true);
  if(event.data?.type==='nsysu:session-update'&&session&&event.data.session?.user?.app_metadata?.diary_staff===true&&event.data.session.user.id===session.user.id){session=event.data.session;sessionStorage.setItem('vtca-session',JSON.stringify(session));}

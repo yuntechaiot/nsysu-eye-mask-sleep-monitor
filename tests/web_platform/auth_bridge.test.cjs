@@ -3,10 +3,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 
-function fixture(){
+function fixture({cloudDepth=0}={}){
  const storage=new Map(),requests=[],messages=[],timers=[];
  const peer={postMessage(message,origin){requests.push({message,origin});}};
- const parent={opener:peer,postMessage(message){messages.push(message);}};
+ let parent={opener:peer,postMessage(message){messages.push(message);}};
+ for(let depth=0;depth<cloudDepth;depth++)parent={parent,postMessage(message){messages.push(message);}};
  let listener,storageListener,sequence=0;
  const context=vm.createContext({parent,location:{origin:'http://127.0.0.1:64666'},URL,
   crypto:{randomUUID(){return `synthetic-nonce-${++sequence}`;}},
@@ -61,4 +62,9 @@ test('return component rotation and explicit logout update the Python research s
  assert(bridge.values().at(-1).value.session_updated);
  bridge.externalStorage(null);
  assert.equal(bridge.values().at(-1).value.session,null);assert(bridge.values().at(-1).value.logged_out);
+});
+
+test('research bridge finds the original diary opener through the hosted cloud wrapper',()=>{
+ const bridge=fixture({cloudDepth:2});bridge.render();bridge.reply();
+ assert.equal(bridge.values().length,1);assert.equal(bridge.values()[0].value.session.access_token,'SYNTHETIC_ACCESS');
 });

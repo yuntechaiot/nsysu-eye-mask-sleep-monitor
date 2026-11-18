@@ -30,6 +30,6 @@
 
 ## 驗證與限制
 
-238 Python、77 JavaScript／隔離 PostgreSQL、Deno check、build／lint／Ruff／mypy 通過；375／414／768／1024／1440px QR UI 檢查通過。雲端 API 已驗證本人固定 QR、CORS、未知管理者及無 token 拒絕。真正 DocterCloud 成功登入仍須使用者輸入自己的研究管理者帳密驗收，不能用 mock 代替。
+238 Python、79 JavaScript／隔離 PostgreSQL、Deno check、build／lint／Ruff／mypy 通過；375／414／768／1024／1440px QR UI 檢查通過。另以實際雲端 inline document 驗證啟動順序，並涵蓋多層 iframe 登入交接。雲端 API 已驗證本人固定 QR、CORS、未知管理者及無 token 拒絕。真正 DocterCloud 成功登入仍須使用者輸入自己的研究管理者帳密驗收，不能用 mock 代替。
 
 Secrets 僅存雲端與忽略 Git 的私有備份。組織 Free，未建立付費主機、專案、分支或升級方案。啟用前 LINE 月額度確認為 200、已用18；50 人每天一則、30 天即 1,500 則，擴大前須另確認容量與授權。此例不是新增研究期間，本次仍限本人。

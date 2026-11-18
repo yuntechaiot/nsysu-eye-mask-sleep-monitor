@@ -28,7 +28,9 @@ Edge Function 的 `NSYSU_STAFF_TOKEN_KEY` 僅存雲端 Secrets 與忽略 Git 的
 
 ## 驗證與邊界
 
-238 Python、77 JavaScript／隔離 PostgreSQL 測試、Deno check、build／lint／Ruff／mypy 通過。375／414／768／1024／1440px 五種寬度的真實瀏覽器 UI 測試使用合成回應，核對 QR、帳號對應、無管理者登入及無水平溢位。
+238 Python、79 JavaScript／隔離 PostgreSQL 測試、Deno check、build／lint／Ruff／mypy 通過。375／414／768／1024／1440px 五種寬度的真實瀏覽器 UI 測試使用合成回應，核對 QR、帳號對應、無管理者登入及無水平溢位。
+
+雲端內嵌腳本在所有功能模組載入後才啟動，實際 inline document 的瀏覽器回歸已核對官方 LINE 區塊可見，避免同步設定回應造成初始化競態。登入交接也涵蓋 Streamlit 三層 iframe 包裝，仍核對 origin、已開啟視窗子樹與 nonce。
 
 既有雲端已實測健康檢查、未知管理者拒絕／無登入 token 拒絕、CORS，以及本人研究帳號取得固定日誌 capability；未建立臨床日誌。實際 DocterCloud 成功登入須由使用者輸入自己的既有管理者密碼驗收，不能用 mock 取代上游成功證據。
 
