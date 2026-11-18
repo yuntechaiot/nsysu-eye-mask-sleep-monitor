@@ -1,5 +1,7 @@
 # 本輪進度（2026-11-17）
 
+2026-11-19 取消後通知來源修復：使用者補上截圖，文字與 LIFF 連結精確對應原工作目錄的 line50_daily.py；舊 ledger 的 11/18 23:04:39 accepted 與截圖吻合。發現「本人50睡眠日誌提醒」Codex automation ID 50 仍 ACTIVE，先前只停到了另一個 Windows 工作。已用 automation_update 暫停為 PAUSED，私有備份後關閉舊簽署政策，驗證簽章有效且 dry-run paused／sent=0；停止已核實的舊 LINE gateway 64650。正式 Supabase 排程與 48／50 綁定保留，49 無綁定／待發提醒，沒有額外發送訊息。先前未定位的紀錄如下，最新狀態以本段與 [雲端實作](CLOUD_LINE_IMPLEMENTATION.md) 為準。
+
 2026-11-18 一對一綁定強化：已讀回正式 DB 的 account_hash 唯一與 line_user 主鍵，重複數均 0；核對、成功 callback 與確認取消新增帳號交易鎖，兩個 LINE 同時確認時只允許一位取得該研究帳號，另一位明確被拒絕。僅原 LINE 確認取消後才可換 LINE。92 Node／隔離 PG（含 34 雲端 LINE）、Deno check 與 lint 通過，包含同時確認、兩方向 DB 唯一約束與取消後轉移／舊收件人停發；正式資料未變更。
 
 49 的取消後通知仍在調查：已確認 21:11:42 取消、目前無綁定、取消後無新增／待發日誌提醒；23:04 沒有對應本系統發送紀錄。舊本機 worker Disabled，官方 Manager 需登入，需通知原文或截圖才能核對其他來源，沒有把目前無紀錄當作問題已修復。

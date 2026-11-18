@@ -2,6 +2,8 @@
 
 **2026-11-18 雲端版更新：** 現在採既有 Supabase Edge Function／Cron 與 Streamlit 原生綁定頁，使用官方 Account Linking；不使用本機 Python 服務、SQLite worker 或 LIFF。雲端已啟用並接通正式網站；有效名冊帳號核對與官方確認成功後，立即收到本人日誌測試連結，正式提醒從台灣隔日 09:00 開始。最新設定與已驗證項目以 [CLOUD_LINE_IMPLEMENTATION](CLOUD_LINE_IMPLEMENTATION.md) 為準。
 
+**2026-11-19 舊發送器停用：** 已定位另一個仍 ACTIVE 的舊 Codex 自動化「本人50睡眠日誌提醒」（ID 50），其 LIFF 訊息在雲端取消後仍送出。現已 PAUSED、舊簽署政策 enabled=false、64650 gateway 停止。舊本機設定文件只供歷史查考，不能依其 prepare／enable／run-due 指令重新啟用；正式提醒僅使用上述 Supabase 雲端排程。
+
 正式圖文選單現已設定為所有好友共用預設；原本人專屬 Demo 覆蓋已移除。手機退出並重開聊天室後最多約一分鐘更新；LINE 電腦版不顯示此圖文選單。正式部署使用 `tools/cloud_line_menu.py`，單人 `tools/live_line_menu.py` 僅供舊隔離 Demo。API 建立的選單及優先順序可參閱 [LINE 官方說明](https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/)。
 
 有效研究帳號 01～50 與 LINE 採一對一的目前綁定：研究帳號已被另一個 LINE 使用時會拒絕，也不能用同一 LINE 同時綁其他研究帳號。原 LINE 需完成「確認取消」才可換綁，單純點開取消確認卡不會釋放。資料庫唯一約束及帳號交易鎖同時保護，包含兩個 LINE 同時操作的情況。
