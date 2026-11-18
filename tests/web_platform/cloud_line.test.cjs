@@ -106,6 +106,100 @@ test('official account link is pending until verified callback; nonce owner, rep
  assert.equal((await f.records('bindings'))[0].bound_at.getTime(),original.bound_at.getTime());
 });
 
+test('verified binding immediately sends each recipient their own diary test link before next-day reminders',async t=>{
+ const f=await fixture(t);
+ await f.bind('ycc00000001');await f.bind('ycc00000050','SYNTHETIC_LINE_B');
+ const tests=f.calls.filter(call=>call.payload.messages[0].altText?.includes('【日誌連結測試】'));
+ assert.equal(tests.length,2);
+ for(const [index,member,who,capability] of [[0,'ycc00000001',identity,'a'.repeat(64)],[1,'ycc00000050','SYNTHETIC_LINE_B','b'.repeat(64)]]){
+  const payload=tests[index].payload,body=payload.messages[0],url=new URL(body.template.actions[0].uri);
+  assert.equal(payload.to,who);assert.equal(payload.messages.length,1);
+  assert.equal(url.searchParams.get('member'),member);assert.equal(url.searchParams.get('invite'),capability);
+  assert.equal(url.searchParams.get('date'),'2026-11-17');assert.ok(body.altText.includes(member));
+  assert.ok(body.altText.includes('2026/11/18 09:00'));assert.ok(body.template.text.length<=160);
+ }
+ const jobs=(await f.records('outbox')).filter(job=>job.slot?.startsWith('binding-test:'));
+ assert.equal(jobs.length,2);assert.ok(jobs.every(job=>job.status==='accepted'&&job.attempts===1));
+ await f.store.plan();assert.equal((await f.records('outbox')).filter(job=>job.kind==='diary').length,0);
+ await f.at('2026-11-18T09:00:00+08:00');await f.store.plan();
+ assert.equal((await f.records('outbox')).filter(job=>job.kind==='diary').length,2);
+});
+
+test('open enrollment still requires registered credentials and a verified callback before the new recipient gets a test',async t=>{
+ const f=await fixture(t),who='SYNTHETIC_NEW_RESEARCH_PARTICIPANT';
+ await f.db.query('update nsysu_line.config set allow_all=true,allowed_users=$1',[[]]);
+ await f.send('start',{identity:who});
+ assert.equal((await f.records('bindings')).length,0);
+ assert.equal((await f.prepare('ycc00000002')).status,401);
+ const response=await f.prepare('ycc00000050');assert.equal(response.status,200);
+ assert.equal((await f.records('bindings')).length,0);
+ const nonce=new URL((await response.json()).link_url).searchParams.get('nonce');
+ await f.send('linked',{identity:who,nonce});
+ const tests=f.calls.filter(call=>call.payload.messages[0].altText?.includes('【日誌連結測試】'));
+ assert.equal(tests.length,1);assert.equal(tests[0].payload.to,who);
+ assert.equal(new URL(tests[0].payload.messages[0].template.actions[0].uri).searchParams.get('member'),'ycc00000050');
+});
+
+test('binding callback redelivery and proof replay do not repeat test; intentional same-account rebind does',async t=>{
+ const f=await fixture(t);await f.send();
+ const nonce=new URL((await (await f.prepare()).json()).link_url).searchParams.get('nonce');
+ await f.send('linked',{id:'BIND_TEST',nonce});
+ const original=(await f.records('bindings'))[0];
+ await f.send('linked',{id:'BIND_TEST',nonce});await f.send('linked',{nonce});
+ assert.equal(f.calls.filter(call=>call.payload.messages[0].altText?.includes('【日誌連結測試】')).length,1);
+ await f.at('2026-11-18T08:00:00+08:00');await f.bind();
+ assert.equal(f.calls.filter(call=>call.payload.messages[0].altText?.includes('【日誌連結測試】')).length,2);
+ const binding=(await f.records('bindings'))[0];
+ assert.equal(binding.bound_at.getTime(),original.bound_at.getTime());
+ assert.equal(binding.reminder_start.getTime(),original.reminder_start.getTime());
+});
+
+test('cancel before binding-test event recovery suppresses the old account link after switching accounts',async t=>{
+ const f=await fixture(t);await f.send();
+ const nonce=new URL((await (await f.prepare()).json()).link_url).searchParams.get('nonce');
+ const record=await f.store.applyEvent({id:'DELAYED_BIND_TEST',identity,stamp:Date.parse('2026-11-17T23:59:00+08:00'),action:'linked',nonce});
+ assert.equal(record.result.kind,'binding_test');
+ await f.send('cancel');await f.send(f.calls.at(-1).payload.messages[0].template.actions[0].data.slice(8));
+ await f.at('2026-11-18T00:00:00+08:00');await f.bind('ycc00000050');
+ assert.equal(await f.store.finishEvent(record,record.result.message),null);
+ assert.equal((await f.records('events')).find(event=>event.event_id===record.event_id).finished,true);
+ assert.equal(f.calls.filter(call=>call.payload.messages[0].altText?.includes('【日誌連結測試】')).length,1);
+ assert.equal(new URL(f.calls.at(-1).payload.messages[0].template.actions[0].uri).searchParams.get('member'),'ycc00000050');
+});
+
+test('pending binding-test retry is cancelled on unbind and cannot send after a new binding',async t=>{
+ const f=await fixture(t);f.setResult('uncertain');await f.bind();
+ const job=(await f.records('outbox')).find(item=>item.slot?.startsWith('binding-test:'));
+ assert.equal(job.attempts,1);assert.equal(job.status,'uncertain');
+ f.setResult('accepted');await f.send('cancel');await f.send(f.calls.at(-1).payload.messages[0].template.actions[0].data.slice(8));
+ assert.equal((await f.records('outbox')).find(item=>item.job_key===job.job_key).status,'cancelled');
+ await f.at('2026-11-18T00:00:00+08:00');await f.bind('ycc00000050');
+ const count=f.calls.length;assert.equal(await f.store.dispatch(job.job_key,f.line),null);assert.equal(f.calls.length,count);
+});
+
+test('binding test revalidates invitation and account before dispatch; unavailable invite has no test URL',async t=>{
+ const f=await fixture(t);f.setResult('retry');await f.bind();
+ const job=(await f.records('outbox')).find(item=>item.slot?.startsWith('binding-test:'));
+ await f.db.query("update nsysu_private.diary_invitations set revoked_at=now() where member_id='ycc00000001'");
+ await f.at('2026-11-18T00:00:00+08:00');f.setResult('accepted');
+ const count=f.calls.length;await f.store.dispatch(job.job_key,f.line);assert.equal(f.calls.length,count);
+ assert.equal((await f.records('outbox')).find(item=>item.job_key===job.job_key).status,'cancelled');
+ await f.bind();assert.ok(f.calls.at(-1).payload.messages[0].text.includes('日誌測試連結目前未開放'));
+ assert.equal(f.calls.at(-1).payload.messages[0].template,undefined);
+});
+
+test('binding test respects future study start and remains available for a completed date without adding reminders',async t=>{
+ const f=await fixture(t);await f.at('2026-11-18T08:00:00+08:00');
+ await f.db.query("update nsysu_line.accounts set starts='2026-11-20',ends='2026-11-21' where member='ycc00000001'");
+ await f.db.query("insert into public.sleep_logs values('ycc00000001','2026-11-20','wake_date')");
+ await f.bind();
+ const body=f.calls.at(-1).payload.messages[0],url=new URL(body.template.actions[0].uri);
+ assert.equal(url.searchParams.get('date'),'2026-11-20');assert.ok(body.altText.includes('2026/11/20 09:00'));
+ await f.at('2026-11-20T09:00:00+08:00');await f.store.plan();
+ assert.equal((await f.records('outbox')).filter(job=>job.kind==='diary').length,0);
+ assert.equal((await f.db.query('select * from public.sleep_logs')).rows.length,1);
+});
+
 test('wrong credentials, inactive account and another LINE binding cannot overwrite',async t=>{
  const f=await fixture(t);
  await f.send();assert.equal((await f.prepare('ycc00000001','wrong')).status,401);

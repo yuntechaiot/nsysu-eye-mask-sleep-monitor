@@ -1,5 +1,7 @@
 # 本輪進度（2026-11-17）
 
+2026-11-18 綁定即測試：依使用者要求，官方成功 callback 後即推送對應帳號的日誌測試卡，卡片顯示帳號、日誌日期、首次正式提醒時間；新綁定仍從台灣隔日 09:00 開始，保留兩小時提醒與填完當日停發。同帳號主動重綁可重測，重放 webhook 不重測；送出前核對綁定世代、帳號與邀請，取消／換帳號／撤銷後不送舊連結。開放既有有效名冊受試者完成帳密與官方確認後自行綁定，沒有向既有好友群發補測試。86 Node／隔離 PG（含 28 雲端 LINE）、Deno check、build／lint 通過；既有 Python 238 與原工作目錄保留。詳見 [雲端狀態](CLOUD_LINE_IMPLEMENTATION.md)。下文為歷次紀錄。
+
 2026-11-18 雲端實測與入口更新：使用者已自行推送 `07344b5`，正式 `active_staff_session` 也已套用。既有雲端 `?view=line` 已實際顯示新表單，LINE Webhook 改至 Supabase 並通過 LINE 官方 API Verify，啟用僅本人 allowlist 與專用 Cron。本機真實 LINE 工作仍 Disabled、`demo_send_enabled=false`。修正 postgres.js 的 JSONB 重複序列化與讀取字串差異，恢復先前真實操作；本人回報收到並完成綁定，雲端核對 `ycc00000050`，真實綁定時間為台灣 11/18 10:14，首次提醒 11/19 09:00，capability 有效且當日尚未提交。未改日期、未匯入本機假日誌、未開放其他好友。
 
 最新新增：DocterCloud 管理者是網站唯一密碼驗證來源，移除第二套連線表單；私有雲端保存加密平台 token，內部 RLS session 沿用既有三名管理者。首頁 QR 改用有效研究帳密直接取得登入帳號對應的固定 QR／連結，沒有管理權限或 LINE 綁定副作用；公開官方 LINE 缺設定時使用已核實的 @823bciot。238 Python、79 Node／隔離 PG、五種寬度 UI、雲端 inline 啟動與三層 iframe 交接、Deno check、build／lint／Ruff／mypy 通過；雲端 API 已實測本人固定日誌入口。上游 DocterCloud 成功仍待使用者用真實管理者帳密驗收。詳見 [登入與 QR 設計](UNIFIED_LOGIN_AND_PERSONAL_QR.md)。下方為歷次驗收紀錄。

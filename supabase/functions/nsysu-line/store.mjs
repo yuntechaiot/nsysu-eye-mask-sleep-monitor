@@ -15,7 +15,7 @@ const allowed=(cfg,id)=>cfg.enabled&&(cfg.allow_all||cfg.allowed_users.includes(
 const expiry=(job,now)=>new Date(now)>new Date(addMinutes(job.due_at,10))||(job.kind==='diary'&&dayOf(now)!==dateText(job.target_date));
 const message=text=>({kind:'message',message:{type:'text',text}});
 const entry=(text,label='開始綁定')=>({kind:'entry',text,label});
-const currentBinding=(tx,id)=>one(tx,`select b.*,a.member,a.study,a.starts::text,a.ends::text from nsysu_line.bindings b
+const currentBinding=(tx,id)=>one(tx,`select b.*,a.member,a.study,a.starts::text,a.ends::text,a.active as account_active from nsysu_line.bindings b
  join nsysu_line.accounts a using(account_hash) where line_user=$1`,[id]);
 
 export class CloudStore {
@@ -151,7 +151,7 @@ export class CloudStore {
    if(action==='keep')return message(`已保留 ${binding.member} 的綁定，提醒設定不變。`);
    await tx.query('insert into nsysu_line.binding_history(line_user,account_hash,study,member,bound_at,reminder_start,cancelled_at) values($1,$2,$3,$4,$5,$6,$7)',[id,binding.account_hash,binding.study,binding.member,binding.bound_at,binding.reminder_start,now]);
    await tx.query('delete from nsysu_line.bindings where line_user=$1',[id]);
-   await tx.query("update nsysu_line.outbox set status='cancelled',processed_at=$2 where line_user=$1 and kind='diary' and status in ('pending','retry','uncertain')",[id,now]);
+   await tx.query("update nsysu_line.outbox set status='cancelled',processed_at=$2 where line_user=$1 and (kind='diary' or slot like 'binding-test:%') and status in ('pending','retry','uncertain')",[id,now]);
    return entry('已取消綁定，後續提醒已停止，已填日誌已保留。現在可以綁定新的研究帳號。');
   }
   if(event.action==='linked'||event.action==='link_failed'){
@@ -172,7 +172,14 @@ export class CloudStore {
     await tx.query('insert into nsysu_line.bindings values($1,$2,$3,$4,true)',[id,account.account_hash,now,start]);
    }
    await this.invalidate(tx,id,now);
-   return message(`綁定成功：${account.member}。首次睡眠日誌提醒：${start.replaceAll('-','/')} 上午 09:00。`);
+   const success=`綁定成功：${account.member}。首次睡眠日誌提醒：${start.replaceAll('-','/')} 上午 09:00。`;
+   const day=account.start_day&&account.start_day>dayOf(now)?account.start_day:dayOf(now);
+   const snapshot=(await one(tx,'select nsysu_line.diary_snapshot($1,$2::date) as snapshot',[account.member,day])).snapshot;
+   if(!snapshot?.active||!/^[a-f0-9]{64}$/.test(snapshot.invite||''))return message(success+' 日誌測試連結目前未開放，請聯絡研究團隊。');
+   const cfg=await this.config(tx);
+   return {kind:'binding_test',binding:{account_hash:account.account_hash,member:account.member,study:account.study,bound_at:instant(others[0]?.bound_at||now)},day,
+    message:buttons(`綁定成功：${account.member}。\n【日誌連結測試】請點下方確認帳號。\n日誌日期：${day.replaceAll('-','/')}。\n首次正式提醒：${start.replaceAll('-','/')} 09:00。`,[
+     {type:'uri',label:'開啟我的日誌（測試）',uri:diaryURL(cfg.diary_url,account.member,snapshot.invite,day)}])};
   }
   return {kind:'none'};
  }
@@ -189,12 +196,25 @@ export class CloudStore {
    if(!await this.active(tx,record.line_user)||new Date(now)>new Date(addMinutes(current.due_at,10))){
     await tx.query('update nsysu_line.events set finished=true where event_id=$1',[record.event_id]);return null;
    }
+   const test=current.result.kind==='binding_test'?current.result:null;
+   if(test&&!await this.bindingTestEligible(tx,current)){
+    await tx.query('update nsysu_line.events set finished=true where event_id=$1',[record.event_id]);return null;
+   }
    if(linkToken)await tx.query('insert into nsysu_line.link_requests values($1,$2,$3)',[await digest(linkToken),record.line_user,addMinutes(now,10)]);
    const key='interaction:'+record.event_id;
-   await tx.query('insert into nsysu_line.outbox(job_key,kind,line_user,due_at,payload) values($1,\'interaction\',$2,$3,$4) on conflict(job_key) do nothing',[key,record.line_user,current.due_at,{to:record.line_user,messages:[body]}]);
+   await tx.query('insert into nsysu_line.outbox(job_key,kind,line_user,due_at,payload,study,member,target_date,slot) values($1,\'interaction\',$2,$3,$4,$5,$6,$7,$8) on conflict(job_key) do nothing',
+    [key,record.line_user,current.due_at,{to:record.line_user,messages:[test?test.message:body]},test?.binding.study||null,test?.binding.member||null,test?.day||null,test?'binding-test:'+record.event_id:null]);
    await tx.query('update nsysu_line.events set finished=true where event_id=$1',[record.event_id]);
    return key;
   });
+ }
+ async bindingTestEligible(tx,record,body=record.result.message){
+  const result=record.result,binding=await currentBinding(tx,record.line_user);
+  if(result.kind!=='binding_test'||!binding?.active||!binding.account_active||binding.account_hash!==result.binding.account_hash||binding.member!==result.binding.member||binding.study!==result.binding.study||instant(binding.bound_at)!==result.binding.bound_at)return false;
+  const snapshot=(await one(tx,'select nsysu_line.diary_snapshot($1,$2::date) as snapshot',[binding.member,result.day])).snapshot;
+  if(!snapshot?.active||!/^[a-f0-9]{64}$/.test(snapshot.invite||''))return false;
+  const cfg=await this.config(tx);
+  return body?.template?.actions[0]?.uri===diaryURL(cfg.diary_url,binding.member,snapshot.invite,result.day);
  }
  async eligible(tx,id,day){
   if(!await this.active(tx,id))return null;
@@ -236,7 +256,11 @@ export class CloudStore {
  async jobEligible(tx,job){
   if(job.payload.to!==job.line_user)return false;
   if(!await this.active(tx,job.line_user))return false;
-  if(job.kind!=='diary')return true;
+  if(job.kind!=='diary'){
+   if(!job.slot?.startsWith('binding-test:'))return true;
+   const record=await one(tx,'select * from nsysu_line.events where event_id=$1 and line_user=$2',[job.slot.slice('binding-test:'.length),job.line_user]);
+   return Boolean(record&&await this.bindingTestEligible(tx,record,job.payload.messages[0]));
+  }
   const day=dateText(job.target_date),eligible=await this.eligible(tx,job.line_user,day);
   if(!eligible||eligible.account.member!==job.member||eligible.account.study!==job.study)return false;
   const cfg=await this.config(tx);

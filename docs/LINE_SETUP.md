@@ -1,10 +1,10 @@
 # LINE 與研究帳號設定
 
-**2026-11-18 雲端版更新：** 現在採既有 Supabase Edge Function／Cron 與 Streamlit 原生綁定頁，使用官方 Account Linking；不使用本機 Python 服務、SQLite worker 或 LIFF。雲端後端已部署但維持停用，網站發布仍待使用者明確同意推送 GitHub。最新設定、已驗證項目與剩餘發布步驟以 [CLOUD_LINE_IMPLEMENTATION](CLOUD_LINE_IMPLEMENTATION.md) 為準。
+**2026-11-18 雲端版更新：** 現在採既有 Supabase Edge Function／Cron 與 Streamlit 原生綁定頁，使用官方 Account Linking；不使用本機 Python 服務、SQLite worker 或 LIFF。雲端已啟用並接通正式網站；有效名冊帳號核對與官方確認成功後，立即收到本人日誌測試連結，正式提醒從台灣隔日 09:00 開始。最新設定與已驗證項目以 [CLOUD_LINE_IMPLEMENTATION](CLOUD_LINE_IMPLEMENTATION.md) 為準。
 
 下文保留先前本機／自管後端方案的設定與驗證紀錄，不能當成雲端版的缺件清單或啟動指令。本機 Demo 已依使用者要求停止。
 
-一般網站只讀取 `LINE_OFFICIAL_ACCOUNT_ID`，以此產生官方加入連結。未設定時不放假 ID／假連結。綁定頁只有 LINE 操作入口，沒有加入一般導覽；管理者工作區也沒有綁定、好友、提醒或技術面板。
+一般網站只讀取 `LINE_OFFICIAL_ACCOUNT_ID`，以此產生官方加入連結；未設定時使用已核實的 @823bciot。綁定頁只有 LINE 操作入口，沒有加入一般導覽；管理者工作區也沒有綁定、好友、提醒或技術面板。
 
 ## 已確認與尚缺項目
 
