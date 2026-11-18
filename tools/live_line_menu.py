@@ -18,7 +18,7 @@ from nsysu.line_menu import binding_rich_menu  # noqa: E402
 from nsysu.live_demo import DemoRuntime, read_json, save_json  # noqa: E402
 
 
-def render_menu(path, font_directory):
+def render_menu(path, font_directory, *, footer='睡眠研究・本機 Demo'):
     # Palette and type follow the existing quiet blue/white binding page.
     image = Image.new('RGB', (2500, 843), '#f5f5f7')
     draw = ImageDraw.Draw(image)
@@ -49,7 +49,7 @@ def render_menu(path, font_directory):
             draw.rounded_rectangle((x-61, y-67, x+61, y+67), radius=22, outline=ink, width=7)
             draw.line((x-30, y, x+30, y), fill=ink, width=7)
         draw.text((center, 480), label, anchor='mm', font=bold(176), fill=ink)
-    draw.text((1250, 747), '睡眠研究・本機 Demo', anchor='mm', font=regular(60), fill='#6e6e73')
+    draw.text((1250, 747), footer, anchor='mm', font=regular(60), fill='#6e6e73')
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, optimize=True)
 
