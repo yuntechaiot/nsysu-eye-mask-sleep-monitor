@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
 from .config import ROOT, setting
 from .reminders import FlowError, configured_service
+from .line_messages import line_text
 
 bp = Blueprint('reminders', __name__)
 _executor_lock = Lock()
@@ -91,7 +92,7 @@ def bind():
     except FlowError as error:
         return jsonify(error=str(error)), error.status
     except Exception:
-        return jsonify(error='服務暫時無法完成綁定，請稍後重試；尚未確認成功。'), 503
+        return jsonify(error=line_text('unavailable')), 503
 
 
 @bp.post('/api/line/webhook')

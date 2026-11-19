@@ -85,7 +85,7 @@ def test_confirmed_cancel_preserves_records_cancels_uncertain_jobs_and_allows_ne
     before_calls = len(flow.line.calls)
     flow.line.result = 'accepted'
     flow.tick(send=True)
-    assert not any(call['payload']['messages'][0].get('altText') == '請填寫睡眠日誌' for call in flow.line.calls[before_calls:])
+    assert not any(any(a.get('label') == '填寫睡眠日誌' for a in call['payload']['messages'][0].get('template', {}).get('actions', [])) for call in flow.line.calls[before_calls:])
     with pytest.raises(FlowError):
         flow.bind(flow.line.token, 'ycc00000050', 'WRONG_PASSWORD')
     result = flow.bind(flow.line.token, 'ycc00000050', 'SYNTHETIC_PASSWORD')

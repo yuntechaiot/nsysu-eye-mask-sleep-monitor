@@ -24,6 +24,7 @@ import requests
 from werkzeug.security import check_password_hash
 
 from .config import ROOT, setting
+from .line_messages import line_text, reminder_text
 
 TZ = ZoneInfo('Asia/Taipei')
 
@@ -260,7 +261,7 @@ class ReminderService:
             record = db.execute('select * from accounts where account_hash=? and active=1', (digest(str(account)),)).fetchone()
             if (not valid_account(account) or not isinstance(password, str) or len(password) > 256
                     or not record or not check_password_hash(record['password_hash'], password)):
-                raise FlowError('研究帳號或密碼不正確，請核對研究團隊配發的資料。', 401)
+                raise FlowError(line_text('bad_credentials'), 401)
             friend = db.execute('select active from friends where line_user=?', (identity,)).fetchone()
             if not friend or not friend['active']:
                 raise FlowError('請先加入官方 LINE，再傳送「開始綁定」後重試。', 403)
@@ -271,7 +272,7 @@ class ReminderService:
                 if len(prior) != 1 or prior[0]['line_user'] != identity or prior[0]['account_hash'] != record['account_hash']:
                     raise FlowError('此帳號或 LINE 已有其他綁定。更換本人帳號請先回聊天室「取消綁定」並確認；他人綁定請聯絡研究團隊。', 409)
                 if not prior[0]['active']:
-                    raise FlowError('此綁定已停用，請聯絡研究團隊。', 403)
+                    raise FlowError(line_text('binding_disabled'), 403)
                 bound, start = prior[0]['bound_at'], prior[0]['reminder_start']
             else:
                 start = str(now.date() + timedelta(days=1))
@@ -306,20 +307,20 @@ class ReminderService:
         cancel = {'type': 'postback', 'label': '取消綁定', 'data': 'binding:cancel', 'displayText': '取消綁定'}
         if action in ('start', 'rebind'):
             if not binding:
-                return self.binding_message('歡迎加入睡眠研究。請完成研究帳號綁定，以接收睡眠日誌提醒。', [entry])
+                return self.binding_message(line_text('start'), [entry])
             entry['label'] = '重新綁定'
-            return self.binding_message(f'目前綁定 {binding["member"]}。同帳號可重新確認；更換帳號請先取消綁定。', [entry, cancel])
+            return self.binding_message(line_text('bound_entry', member=binding['member']), [entry, cancel])
         if action == 'cancel':
             if not binding:
-                return self.binding_message('目前尚未綁定研究帳號。請點「開始綁定」。', [entry])
+                return self.binding_message(line_text('not_bound'), [entry])
             if not binding['active']:
-                return self.binding_message('此綁定已由研究團隊停用，請聯絡研究團隊。', [entry])
+                return self.binding_message(line_text('binding_disabled'), [entry])
             token = secrets.token_hex(32)
             db.execute('update binding_cancellations set used_at=? where line_user=? and used_at is null',
                        (now.isoformat(), identity))
             db.execute('insert into binding_cancellations values(?,?,?,?,?,null)',
                        (digest(token), identity, binding['account_hash'], binding['bound_at'], (now + timedelta(minutes=10)).isoformat()))
-            return self.binding_message(f'確定取消 {binding["member"]} 的綁定？確認後停止後續提醒，已填日誌會保留。', [
+            return self.binding_message(line_text('cancel_confirm', member=binding['member']), [
                 {'type': 'postback', 'label': '確認取消', 'data': 'binding:confirm:' + token, 'displayText': '確認取消綁定'},
                 {'type': 'postback', 'label': '保留綁定', 'data': 'binding:keep:' + token, 'displayText': '保留目前綁定'}])
         operation, token = action.split(':', 1)
@@ -327,17 +328,17 @@ class ReminderService:
             where token_hash=? and line_user=? and used_at is null''', (digest(token), identity)).fetchone()
         if (not request or now > datetime.fromisoformat(request['expires_at']) or not binding
                 or not binding['active'] or binding['account_hash'] != request['account_hash'] or binding['bound_at'] != request['bound_at']):
-            return self.binding_message('確認已失效或綁定已變更。需要取消時，請重新點「取消綁定」。', [cancel])
+            return self.binding_message(line_text('cancel_expired'), [cancel])
         db.execute('update binding_cancellations set used_at=? where line_user=? and used_at is null', (now.isoformat(), identity))
         if operation == 'keep':
-            return self.binding_message(f'已保留 {binding["member"]} 的綁定，提醒設定不變。', [entry])
+            return self.binding_message(line_text('cancel_kept', member=binding['member']), [entry])
         db.execute('insert into binding_history values(?,?,?,?,?,?,?,?)',
                    (str(uuid.uuid4()), identity, binding['account_hash'], binding['study'], binding['member'],
                     binding['bound_at'], binding['reminder_start'], now.isoformat()))
         db.execute('delete from bindings where line_user=?', (identity,))
         db.execute("update outbox set status='cancelled',processed_at=? where line_user=? and kind='diary' and status in ('pending','retry','uncertain')",
                    (now.isoformat(), identity))
-        return self.binding_message('已取消綁定，後續提醒已停止，已填日誌已保留。現在可以綁定新的研究帳號。', [entry])
+        return self.binding_message(line_text('cancel_done'), [entry])
 
     def webhook(self, raw, signature, on_enqueued=None):
         if not self.secret or not isinstance(signature, str):
@@ -439,8 +440,9 @@ class ReminderService:
                     slot = due.strftime('%H:%M')
                     key = json.dumps([account['study'], account['member'], str(now.date()), slot], separators=(',', ':'))
                     url = self.base_url.rstrip('/') + '/?' + urlencode({'member': account['member'], 'invite': snap['invite'], 'date': str(now.date())})
-                    payload = {'to': binding['line_user'], 'messages': [{'type': 'template', 'altText': '請填寫睡眠日誌',
-                        'template': {'type': 'buttons', 'text': self.message_prefix + '請完成本次睡眠日誌。填寫完成後，今天將不再提醒。',
+                    body = self.message_prefix + reminder_text(account['member'], str(now.date()), slot)
+                    payload = {'to': binding['line_user'], 'messages': [{'type': 'template', 'altText': body,
+                        'template': {'type': 'buttons', 'text': body,
                                      'actions': [{'type': 'uri', 'label': '填寫睡眠日誌', 'uri': url}]}}]}
                     self.enqueue(db, key, 'diary', binding['line_user'], due, payload, account, slot)
         with self.state.connect() as db:

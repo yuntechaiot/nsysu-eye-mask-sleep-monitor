@@ -219,7 +219,7 @@ test('binding test revalidates invitation and account before dispatch; unavailab
  await f.at('2026-11-18T00:00:00+08:00');f.setResult('accepted');
  const count=f.calls.length;await f.store.dispatch(job.job_key,f.line);assert.equal(f.calls.length,count);
  assert.equal((await f.records('outbox')).find(item=>item.job_key===job.job_key).status,'cancelled');
- await f.bind();assert.ok(f.calls.at(-1).payload.messages[0].text.includes('日誌測試連結目前未開放'));
+ await f.bind();assert.ok(f.calls.at(-1).payload.messages[0].text.includes('日誌測試連結暫時無法開啟'));
  assert.equal(f.calls.at(-1).payload.messages[0].template,undefined);
 });
 
@@ -282,7 +282,7 @@ test('only confirmed cancellation releases an account for another LINE; previous
  const [job]=(await f.records('outbox')).filter(item=>item.kind==='diary');
  assert.ok(job);await f.store.dispatch(job.job_key,f.line);
  assert.equal(job.line_user,'SYNTHETIC_LINE_B');
- assert.equal(f.calls.filter(call=>call.payload.messages[0].altText?.startsWith('請完成')&&call.payload.to===identity).length,0);
+ assert.equal(f.calls.filter(call=>call.payload.messages[0].template?.actions?.[0]?.label==='填寫睡眠日誌'&&call.payload.to===identity).length,0);
 });
 
 test('cancel requires confirmation, preserves diary, releases account, invalidates stale confirmation',async t=>{
@@ -302,7 +302,7 @@ test('Taipei next day first reminder, same-slot dedupe, open versus saved comple
  await f.at('2026-11-18T09:00:00+08:00');await f.store.plan();await f.store.plan();
  let jobs=(await f.records('outbox')).filter(j=>j.kind==='diary');assert.equal(jobs.length,1);
  await f.store.dispatch(jobs[0].job_key,f.line);await f.store.dispatch(jobs[0].job_key,f.line);
- assert.equal(f.calls.filter(c=>c.payload.messages[0].altText?.startsWith('請完成')).length,1);
+ assert.equal(f.calls.filter(c=>c.payload.messages[0].template?.actions?.[0]?.label==='填寫睡眠日誌').length,1);
  await f.at('2026-11-18T11:00:00+08:00');await f.store.plan();
  assert.equal((await f.records('outbox')).filter(j=>j.kind==='diary').length,2);
  await f.db.query("insert into public.sleep_logs values('ycc00000001','2026-11-18','wake_date')");
@@ -323,6 +323,15 @@ test('all seven daily slots, wrong date/member/draft do not stop target reminder
  const jobs=(await f.records('outbox')).filter(j=>j.kind==='diary');
  assert.deepEqual(jobs.map(j=>j.slot),['09:00','11:00','13:00','15:00','17:00','19:00','21:00']);
  assert.ok(jobs.every(j=>j.status==='accepted'&&j.attempts===1));
+ for(const job of jobs){
+  const body=job.payload.messages[0],url=new URL(body.template.actions[0].uri);
+  assert.equal(body.template.text.startsWith(job.slot==='09:00'?'早安～昨天睡得好嗎？':'小小提醒～'),true);
+  assert.ok(body.template.text.includes('研究帳號：ycc00000001'));
+  assert.ok(body.template.text.includes('日誌日期：2026/11/18'));
+  assert.ok(body.template.text.length<=160);assert.equal(body.altText,body.template.text);
+  assert.equal(url.searchParams.get('member'),'ycc00000001');assert.equal(url.searchParams.get('date'),'2026-11-18');
+  assert.equal(url.searchParams.get('invite'),'a'.repeat(64));
+ }
 });
 
 test('cancel keep/expiry, account link expiry, and disabled binding remain effective',async t=>{
@@ -476,4 +485,33 @@ test('personal QR errors preserve allowed CORS and repeated password guessing is
  assert.equal((await f.gateway(request())).status,429);
  const preflight=await f.gateway(new Request('https://cloud.example/diary-access',{method:'OPTIONS',headers:{Origin:'https://research.example.org'}}));
  assert.equal(preflight.status,204);
+});
+
+
+test('friendly binding and cancellation copy keeps account context and confirmation actions',async t=>{
+ const f=await fixture(t);await f.bind('ycc00000050');
+ let body=f.calls.at(-1).payload.messages[0];
+ assert.ok(body.template.text.startsWith('已幫你完成綁定囉～'));
+ assert.ok(body.template.text.includes('研究帳號：ycc00000050'));
+ await f.send('rebind');body=f.calls.at(-1).payload.messages[0];
+ assert.ok(body.template.text.includes('ycc00000050'));
+ assert.ok(body.template.text.includes('先取消目前的綁定'));
+ await f.send('cancel');body=f.calls.at(-1).payload.messages[0];
+ assert.ok(body.template.text.includes('要取消研究帳號 ycc00000050 的綁定嗎？'));
+ assert.ok(body.template.text.includes('已經填好的日誌會保留'));
+ assert.equal((await f.records('bindings')).length,1);
+ const action=body.template.actions[0].data.slice(8);await f.send(action);
+ assert.equal((await f.records('bindings')).length,0);
+ assert.ok(f.calls.at(-1).payload.messages[0].template.text.startsWith('已幫你取消綁定'));
+ assert.ok(f.calls.every(call=>call.payload.messages.every(message=>message.type!=='template'||message.template.text.length<=160)));
+});
+
+test('friendly credential and service errors remain distinct without creating a binding',async t=>{
+ const f=await fixture(t);await f.send('start');
+ const wrong=await f.prepare('ycc00000001','SYNTHETIC_WRONG_PASSWORD');
+ assert.equal(wrong.status,401);assert.match((await wrong.json()).error,/這次還沒核對成功/);
+ f.store.credentials=async()=>{throw Error('SYNTHETIC_UPSTREAM_UNAVAILABLE');};
+ const unavailable=await f.prepare();assert.equal(unavailable.status,503);
+ assert.match((await unavailable.json()).error,/目前服務暫時連不上/);
+ assert.equal((await f.records('bindings')).length,0);
 });

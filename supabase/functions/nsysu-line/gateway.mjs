@@ -1,3 +1,4 @@
+import {lineText} from './messages.mjs';
 import {FlowError,buttons,cancelAction,digest,normalizeEvent,randomToken,validAccount,verifyPassword,verifySignature} from './protocol.mjs';
 
 const jsonResponse=(value,status=200,origin=null)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...(origin?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
@@ -100,10 +101,10 @@ export function createGateway({store,line,secret,bindingURL,waitUntil=promise=>p
    if(route==='prepare-link'){
     const input=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(rawBytes));
     if(!input||Array.isArray(input)||typeof input!=='object')throw new FlowError('請提供研究帳號與密碼。');
-    if(typeof input.link_token!=='string'||!input.link_token||input.link_token.length>1000)throw new FlowError('請從 LINE 重新開啟「開始綁定」。',401);
+    if(typeof input.link_token!=='string'||!input.link_token||input.link_token.length>1000)throw new FlowError(lineText('link_expired'),401);
     const hash=await digest(String(input.account));
     const account=await store.credentials(await digest(input.link_token),hash,await digest(input.link_token));
-    if(!validAccount(input.account)||!account||!await verifyPassword(input.password,account.password_hash))throw new FlowError('研究帳號或密碼不正確，請核對研究團隊配發的資料。',401);
+    if(!validAccount(input.account)||!account||!await verifyPassword(input.password,account.password_hash))throw new FlowError(lineText('bad_credentials'),401);
     const nonce=randomToken();
     await store.prepareProof(await digest(input.link_token),hash,await digest(nonce));
     const url=new URL('https://access.line.me/dialog/bot/accountLink');
@@ -112,16 +113,16 @@ export function createGateway({store,line,secret,bindingURL,waitUntil=promise=>p
    }
    if(route==='diary-access'){
     const input=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(rawBytes));
-    if(!input||!validAccount(input.account))throw new FlowError('研究帳號或密碼不正確，請核對研究團隊配發的資料。',401);
+    if(!input||!validAccount(input.account))throw new FlowError(lineText('bad_credentials'),401);
     const accountHash=await digest(input.account),registered=await store.qrCredentials(accountHash);
-    if(!registered||!await verifyPassword(input.password,registered.password_hash))throw new FlowError('研究帳號或密碼不正確，請核對研究團隊配發的資料。',401);
+    if(!registered||!await verifyPassword(input.password,registered.password_hash))throw new FlowError(lineText('bad_credentials'),401);
     return response({status:'verified_research_account',...await store.qrLink(accountHash)});
    }
    return response({error:'Not found'},404);
   }catch(error){
    if(error instanceof FlowError)return response({error:error.message},error.status);
    if(error instanceof SyntaxError)return response({error:'Invalid JSON'},400);
-   return response({error:'服務暫時無法完成操作，請回到 LINE 稍後重試。'},503);
+   return response({error:lineText('unavailable')},503);
   }
  };
 }

@@ -1,3 +1,4 @@
+import {bindingText,lineText,reminderText} from './messages.mjs';
 import {FlowError,addMinutes,buttons,cancelAction,dayOf,diaryURL,digest,instant,nextDay,randomToken} from './protocol.mjs';
 
 const decoded=value=>{for(let count=0;count<2&&typeof value==='string';count++)value=JSON.parse(value);return value;};
@@ -55,7 +56,7 @@ export class CloudStore {
    const link=await one(tx,'select * from nsysu_line.link_requests where token_hash=$1 and expires_at>$2',[tokenHash,now]);
    return link&&await this.active(tx,link.line_user)?link:null;
   });
-  if(!request)throw new FlowError('綁定連結已失效，請回到 LINE 點「開始綁定」。',401);
+  if(!request)throw new FlowError(lineText('link_expired'),401);
   await this.limit(['line:'+await digest(request.line_user),'account:'+accountHash],5);
   return this.transaction(tx=>one(tx,'select password_hash from nsysu_line.accounts where account_hash=$1 and active',[accountHash]));
  }
@@ -77,15 +78,15 @@ export class CloudStore {
   return this.transaction(async tx=>{
    const now=await time(tx);
    const request=await one(tx,'select * from nsysu_line.link_requests where token_hash=$1 and expires_at>$2',[tokenHash,now]);
-   if(!request||!await this.active(tx,request.line_user))throw new FlowError('綁定連結已失效，請回到 LINE 重新開始。',401);
+   if(!request||!await this.active(tx,request.line_user))throw new FlowError(lineText('link_expired'),401);
    await this.lock(tx,request.line_user);
    const account=await one(tx,'select * from nsysu_line.accounts where account_hash=$1 and active',[accountHash]);
-   if(!account||account.ends&&dateText(account.ends)<dayOf(now))throw new FlowError('此研究帳號目前無法綁定，請聯絡研究團隊。',403);
+   if(!account||account.ends&&dateText(account.ends)<dayOf(now))throw new FlowError(lineText('account_unavailable'),403);
    await this.lockAccount(tx,accountHash);
    const conflicts=await rows(tx,'select * from nsysu_line.bindings where line_user=$1 or account_hash=$2',[request.line_user,accountHash]);
-   if(conflicts.some(b=>b.account_hash===accountHash&&b.line_user!==request.line_user))throw new FlowError('此研究帳號已綁定其他 LINE。每個研究帳號只能綁定一個 LINE，請先由原 LINE 取消綁定。',409);
-   if(conflicts.some(b=>b.line_user===request.line_user&&b.account_hash!==accountHash))throw new FlowError('你的 LINE 已綁定其他研究帳號，請先回 LINE 取消原綁定後再更換帳號。',409);
-   if(conflicts.some(b=>!b.active))throw new FlowError('此綁定已停用，請聯絡研究團隊。',403);
+   if(conflicts.some(b=>b.account_hash===accountHash&&b.line_user!==request.line_user))throw new FlowError(lineText('account_taken'),409);
+   if(conflicts.some(b=>b.line_user===request.line_user&&b.account_hash!==accountHash))throw new FlowError(lineText('line_taken'),409);
+   if(conflicts.some(b=>!b.active))throw new FlowError(lineText('binding_disabled'),403);
    await tx.query('update nsysu_line.link_proofs set used_at=$2 where token_hash=$1 and used_at is null',[tokenHash,now]);
    await tx.query('insert into nsysu_line.link_proofs values($1,$2,$3,$4,null)',[nonceHash,tokenHash,accountHash,request.expires_at]);
    return {expires_at:instant(request.expires_at)};
@@ -135,56 +136,56 @@ export class CloudStore {
    await this.invalidate(tx,id,now);
    return {kind:'none'};
   }
-  if(event.action==='start'||event.action==='rebind')return entry(binding?`目前綁定 ${binding.member}。同帳號可重新確認；更換帳號請先取消綁定。`:'請輸入研究團隊配發的帳號與密碼，完成 LINE 綁定。',binding?'重新綁定':'開始綁定');
+  if(event.action==='start'||event.action==='rebind')return entry(binding?lineText('bound_entry',{member:binding.member}):lineText('start'),binding?'重新綁定':'開始綁定');
   if(event.action==='cancel'){
-   if(!binding)return entry('目前尚未綁定研究帳號。請點「開始綁定」。');
-   if(!binding.active)return message('此綁定已由研究團隊停用，請聯絡研究團隊。');
+   if(!binding)return entry(lineText('not_bound'));
+   if(!binding.active)return message(lineText('binding_disabled'));
    const token=randomToken();
    await tx.query('update nsysu_line.cancellations set used_at=$2 where line_user=$1 and used_at is null',[id,now]);
    await tx.query('insert into nsysu_line.cancellations values($1,$2,$3,$4,$5,null)',[await digest(token),id,binding.account_hash,binding.bound_at,addMinutes(now,10)]);
-   return {kind:'message',message:buttons(`確定取消 ${binding.member} 的綁定？確認後停止後續提醒，已填日誌會保留。`,[
+   return {kind:'message',message:buttons(lineText('cancel_confirm',{member:binding.member}),[
     {type:'postback',label:'確認取消',data:'binding:confirm:'+token,displayText:'確認取消綁定'},
     {type:'postback',label:'保留綁定',data:'binding:keep:'+token,displayText:'保留目前綁定'}])};
   }
   if(event.action.startsWith('confirm:')||event.action.startsWith('keep:')){
    const [action,token]=event.action.split(':');
    const confirm=await one(tx,'select * from nsysu_line.cancellations where token_hash=$1 and line_user=$2 and used_at is null and expires_at>=$3',[await digest(token),id,now]);
-   if(!binding?.active||!confirm||confirm.account_hash!==binding.account_hash||instant(confirm.bound_at)!==instant(binding.bound_at))return message('確認已失效或綁定已變更。請重新點「取消綁定」。');
+   if(!binding?.active||!confirm||confirm.account_hash!==binding.account_hash||instant(confirm.bound_at)!==instant(binding.bound_at))return message(lineText('cancel_expired'));
    await this.invalidate(tx,id,now);
-   if(action==='keep')return message(`已保留 ${binding.member} 的綁定，提醒設定不變。`);
+   if(action==='keep')return message(lineText('cancel_kept',{member:binding.member}));
    await this.lockAccount(tx,binding.account_hash);
    await tx.query('insert into nsysu_line.binding_history(line_user,account_hash,study,member,bound_at,reminder_start,cancelled_at) values($1,$2,$3,$4,$5,$6,$7)',[id,binding.account_hash,binding.study,binding.member,binding.bound_at,binding.reminder_start,now]);
    await tx.query('delete from nsysu_line.bindings where line_user=$1',[id]);
    await tx.query("update nsysu_line.outbox set status='cancelled',processed_at=$2 where line_user=$1 and (kind='diary' or slot like 'binding-test:%') and status in ('pending','retry','uncertain')",[id,now]);
-   return entry('已取消綁定，後續提醒已停止，已填日誌已保留。現在可以綁定新的研究帳號。');
+   return entry(lineText('cancel_done'));
   }
   if(event.action==='linked'||event.action==='link_failed'){
    const proof=await one(tx,`select p.*,r.line_user from nsysu_line.link_proofs p join nsysu_line.link_requests r using(token_hash)
     where p.nonce_hash=$1 and p.used_at is null and p.expires_at>$2 and r.expires_at>$2`,[await digest(event.nonce),now]);
-   if(!proof||proof.line_user!==id)return message('綁定確認已失效，請重新點「開始綁定」。');
+   if(!proof||proof.line_user!==id)return message(lineText('confirmation_expired'));
    await tx.query('update nsysu_line.link_proofs set used_at=$2 where nonce_hash=$1',[proof.nonce_hash,now]);
-   if(event.action==='link_failed')return entry('LINE 授權未完成，尚未新增綁定。請重新開始。');
+   if(event.action==='link_failed')return entry(lineText('link_failed'));
    const account=await one(tx,'select *,starts::text as start_day,ends::text as end_day from nsysu_line.accounts where account_hash=$1 and active',[proof.account_hash]);
-   if(!account||account.end_day&&account.end_day<dayOf(now))return message('此研究帳號目前無法綁定，請聯絡研究團隊。');
+   if(!account||account.end_day&&account.end_day<dayOf(now))return message(lineText('account_unavailable'));
    await this.lockAccount(tx,proof.account_hash);
    const others=await rows(tx,'select * from nsysu_line.bindings where account_hash=$1 or line_user=$2',[proof.account_hash,id]);
-   if(others.some(b=>b.account_hash===proof.account_hash&&b.line_user!==id))return message('此研究帳號已綁定其他 LINE。每個研究帳號只能綁定一個 LINE，請先由原 LINE 取消綁定。');
-   if(others.some(b=>b.line_user===id&&b.account_hash!==proof.account_hash))return message('你的 LINE 已綁定其他研究帳號，請先取消原綁定後再更換帳號。');
-   if(others.some(b=>!b.active))return message('此綁定已停用，請聯絡研究團隊。');
+   if(others.some(b=>b.account_hash===proof.account_hash&&b.line_user!==id))return message(lineText('account_taken'));
+   if(others.some(b=>b.line_user===id&&b.account_hash!==proof.account_hash))return message(lineText('line_taken'));
+   if(others.some(b=>!b.active))return message(lineText('binding_disabled'));
    let start=others[0]?dateText(others[0].reminder_start):nextDay(now);
    if(!others.length){
     if(account.start_day&&account.start_day>start)start=account.start_day;
-    if(account.end_day&&start>account.end_day)return message('研究已無後續提醒日期，請聯絡研究團隊。');
+    if(account.end_day&&start>account.end_day)return message(lineText('no_reminders'));
     await tx.query('insert into nsysu_line.bindings values($1,$2,$3,$4,true)',[id,account.account_hash,now,start]);
    }
    await this.invalidate(tx,id,now);
-   const success=`綁定成功：${account.member}。首次睡眠日誌提醒：${start.replaceAll('-','/')} 上午 09:00。`;
+   const success=bindingText(account.member,start);
    const day=account.start_day&&account.start_day>dayOf(now)?account.start_day:dayOf(now);
    const snapshot=(await one(tx,'select nsysu_line.diary_snapshot($1,$2::date) as snapshot',[account.member,day])).snapshot;
-   if(!snapshot?.active||!/^[a-f0-9]{64}$/.test(snapshot.invite||''))return message(success+' 日誌測試連結目前未開放，請聯絡研究團隊。');
+   if(!snapshot?.active||!/^[a-f0-9]{64}$/.test(snapshot.invite||''))return message(success+'\n'+lineText('test_unavailable'));
    const cfg=await this.config(tx);
    return {kind:'binding_test',binding:{account_hash:account.account_hash,member:account.member,study:account.study,bound_at:instant(others[0]?.bound_at||now)},day,
-    message:buttons(`綁定成功：${account.member}。\n【日誌連結測試】請點下方確認帳號。\n日誌日期：${day.replaceAll('-','/')}。\n首次正式提醒：${start.replaceAll('-','/')} 09:00。`,[
+    message:buttons(bindingText(account.member,start,day),[
      {type:'uri',label:'開啟我的日誌（測試）',uri:diaryURL(cfg.diary_url,account.member,snapshot.invite,day)}])};
   }
   return {kind:'none'};
@@ -247,7 +248,7 @@ export class CloudStore {
     for(const {slot,due} of slots){
      const {account,snapshot}=eligible;
      const key=json([account.study,account.member,day,slot]);
-     const payload={to:id,messages:[buttons('請完成本次睡眠日誌。填寫完成後，今天將不再提醒。',[
+     const payload={to:id,messages:[buttons(reminderText(account.member,day,slot),[
       {type:'uri',label:'填寫睡眠日誌',uri:diaryURL(cfg.diary_url,account.member,snapshot.invite,day)}])]};
      await tx.query(`insert into nsysu_line.outbox(job_key,kind,line_user,study,member,target_date,slot,due_at,payload)
       values($1,'diary',$2,$3,$4,$5,$6,$7,$8) on conflict do nothing`,[key,id,account.study,account.member,day,slot,due,payload]);

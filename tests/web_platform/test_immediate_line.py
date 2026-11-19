@@ -79,7 +79,7 @@ def test_route_starts_sender_without_tick_and_does_not_wait_for_network(flow):
             executor.shutdown(wait=True)
     assert len(flow.line.calls) == 1
     flow.tick(send=True)  # The timer does not send the accepted chat message again.
-    assert sum(call['payload']['messages'][0].get('altText', '').startswith('確定取消') for call in flow.line.calls) == 1
+    assert sum(any(a.get('data', '').startswith('binding:confirm:') for a in call['payload']['messages'][0].get('template', {}).get('actions', [])) for call in flow.line.calls) == 1
 
 
 def test_stopped_sending_and_invalid_signature_cannot_start_background_sender(flow):

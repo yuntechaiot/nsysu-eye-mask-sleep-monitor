@@ -1,7 +1,7 @@
 """Synthetic integrations with controlled Taipei clock and durable SQLite."""
 import base64
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 import hashlib
 import hmac
 import json
@@ -155,6 +155,25 @@ def test_formal_commit_at_1030_stops_11_and_next_day_is_new(flow):
     assert jobs(flow)[-1]['target_date'] == '2026-11-19'
 
 
+def test_friendly_copy_keeps_scheduled_member_date_link_and_evening_greeting(flow):
+    from urllib.parse import parse_qs, urlsplit
+    bind(flow, 'ycc00000050')
+    for hour in (9, 11, 21):
+        at(flow, hour=hour)
+        flow.tick(send=True)
+    planned = jobs(flow)
+    assert [job['slot'] for job in planned] == ['09:00', '11:00', '21:00']
+    for job in planned:
+        body = json.loads(job['payload'])['messages'][0]
+        message = body['template']['text']
+        assert message.startswith('早安～昨天睡得好嗎？' if job['slot'] == '09:00' else '小小提醒～')
+        assert '研究帳號：ycc00000050' in message and '日誌日期：2026/11/18' in message
+        assert len(message) <= 160 and body['altText'] == message
+        query = parse_qs(urlsplit(body['template']['actions'][0]['uri']).query)
+        assert query['member'] == ['ycc00000050'] and query['date'] == ['2026-11-18']
+        assert query['invite'] == [f'{50:064x}']
+
+
 def test_timeout_restart_fixed_retry_key_payload_concurrent_workers(flow):
     bind(flow)
     at(flow)
@@ -301,7 +320,7 @@ def test_slow_snapshot_cannot_send_after_grace(flow):
         return original(account, day)
     flow.diaries.snapshot = slow
     flow.tick(send=True)
-    assert not [c for c in flow.line.calls if c['payload']['messages'][0]['altText'] == '請填寫睡眠日誌']
+    assert not [c for c in flow.line.calls if any(a.get('label') == '填寫睡眠日誌' for a in c['payload']['messages'][0].get('template', {}).get('actions', []))]
     assert jobs(flow)[0]['status'] == 'skipped'
 
 
