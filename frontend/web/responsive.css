@@ -63,3 +63,8 @@ dialog,.modal{overscroll-behavior:contain;max-height:calc(100dvh - 2rem - env(sa
 #self-qr-image canvas,#self-qr-image img{max-width:100%;height:auto!important}
 .self-qr-actions{display:flex;flex-wrap:wrap;gap:.75rem}
 .self-qr-actions .btn{flex:1;min-height:3rem}
+.request-status{display:flex;align-items:center;gap:.65rem;width:100%;min-width:0;box-sizing:border-box;flex-basis:100%;grid-column:1/-1;margin:.75rem 0;padding:.8rem 1rem;border:1px solid #c8dcf1;border-radius:.7rem;background:#edf5ff;color:#21466b;font-size:1rem;line-height:1.6;overflow-wrap:anywhere}
+.request-status[hidden]{display:none!important}
+.request-spinner{width:1rem;height:1rem;flex:0 0 1rem;border:2px solid #afc9e4;border-top-color:#0066cc;border-radius:50%;animation:request-spin .8s linear infinite}
+@keyframes request-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.request-spinner{animation:none}}
